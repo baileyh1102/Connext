@@ -1,16 +1,19 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
 import Profile from './Profile'
+import Dashboard from './Dashboard'
 
 function App() {
+  const [session, setSession] = useState(null)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [message, setMessage] = useState('')
   const [isLogin, setIsLogin] = useState(false)
-  const [session, setSession] = useState(null)
   const [messages, setMessages] = useState([])
-  const [newMessage, setNewMessage] = useState('')  
+  const [newMessage, setNewMessage] = useState('')
   const [showProfile, setShowProfile] = useState(false)
+  const [showDashboard, setShowDashboard] = useState(false)
+  const [profile, setProfile] = useState(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -41,8 +44,34 @@ function App() {
     return () => supabase.removeChannel(channel)
   }, [])
 
+  useEffect(() => {
+    const loadProfile = async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .single()
+      setProfile(data)
+    }
+    if (session) loadProfile()
+  }, [session, showProfile])
+
   const handleLogout = async () => {
     await supabase.auth.signOut()
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setMessage('')
+
+    if (isLogin) {
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error) setMessage(`Error: ${error.message}`)
+    } else {
+      const { error } = await supabase.auth.signUp({ email, password })
+      if (error) setMessage(`Error: ${error.message}`)
+      else setMessage('Success! Check your email to confirm your account.')
+    }
   }
 
   const handleSendMessage = async (e) => {
@@ -55,42 +84,29 @@ function App() {
     })
     setNewMessage('')
   }
-  
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setMessage('')
-
-    if (isLogin) {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-      if (error) {
-        setMessage(`Error: ${error.message}`)
-      } else {
-        setMessage(`Welcome back!`)
-      }
-    } else {
-      const { data, error } = await supabase.auth.signUp({ email, password })
-      if (error) {
-        setMessage(`Error: ${error.message}`)
-      } else {
-        setMessage('Success! Check your email to confirm your account.')
-      }
-    }
-  }
 
   if (session) {
     return (
       <div className="flex flex-col h-screen bg-gray-100">
-        <div className="bg-white shadow p-4 flex justify-between items-center">
+        <div className="bg-white shadow p-4 flex justify-between items-center relative">
           <h1 className="text-xl font-bold">Connext</h1>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-500">{session.user.email}</span>
-            <button onClick={() => setShowProfile(true)} className="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300">
-              Edit Profile
-            </button>
-            <button onClick={handleLogout} className="text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-600/90">
-              Log Out
-            </button>
-          </div>
+          <button onClick={() => setShowDashboard(!showDashboard)} className="flex items-center gap-2">
+            {profile?.avatar_url ? (
+              <img src={profile.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full object-cover" />
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-gray-300" />
+            )}
+          </button>
+
+          {showDashboard && (
+            <Dashboard
+              profile={profile}
+              session={session}
+              onEditProfile={() => { setShowDashboard(false); setShowProfile(true) }}
+              onLogout={() => { setShowDashboard(false); handleLogout() }}
+              onClose={() => setShowDashboard(false)}
+            />
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
@@ -114,11 +130,12 @@ function App() {
             Send
           </button>
         </form>
+
         {showProfile && <Profile session={session} onClose={() => setShowProfile(false)} />}
       </div>
     )
   }
-  
+
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100">
       <form onSubmit={handleSubmit} className="bg-white p-8 rounded-lg shadow-md w-80">

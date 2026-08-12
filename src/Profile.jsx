@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabaseClient'
 
 function Profile({ session, onClose }) {
@@ -9,6 +9,7 @@ function Profile({ session, onClose }) {
   const [avatarFile, setAvatarFile] = useState(null)
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
+  const fileInputRef = useRef(null)
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -44,6 +45,7 @@ function Profile({ session, onClose }) {
         .upload(filePath, avatarFile, { upsert: true })
 
       if (uploadError) {
+        console.log('Full upload error:', uploadError)
         setMessage(`Error uploading image: ${uploadError.message}`)
         setLoading(false)
         return
@@ -84,17 +86,31 @@ function Profile({ session, onClose }) {
         </div>
 
         <form onSubmit={handleSave}>
-          {avatarUrl && (
-            <img src={avatarUrl} alt="Avatar" className="w-20 h-20 rounded-full object-cover mx-auto mb-4" />
-          )}
-
-          <label className="block text-sm font-medium mb-1">Profile Picture</label>
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(e) => setAvatarFile(e.target.files[0])}
-            className="w-full mb-4 text-sm"
-          />
+        <div className="flex flex-col items-center mb-4">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current.click()}
+              className="relative group"
+            >
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="Avatar" className="w-20 h-20 rounded-full object-cover" />
+              ) : (
+                <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center text-gray-400 text-xs">
+                  No photo
+                </div>
+              )}
+              <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs transition-opacity">
+                Change
+              </div>
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={(e) => setAvatarFile(e.target.files[0])}
+              className="hidden"
+            />
+          </div>
 
           <label className="block text-sm font-medium mb-1">Display Name</label>
           <input
