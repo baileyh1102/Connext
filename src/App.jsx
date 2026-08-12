@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
+import Profile from './Profile'
 
 function App() {
   const [email, setEmail] = useState('')
@@ -7,6 +8,9 @@ function App() {
   const [message, setMessage] = useState('')
   const [isLogin, setIsLogin] = useState(false)
   const [session, setSession] = useState(null)
+  const [messages, setMessages] = useState([])
+  const [newMessage, setNewMessage] = useState('')  
+  const [showProfile, setShowProfile] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -20,8 +24,36 @@ function App() {
     return () => subscription.unsubscribe()
   }, [])
 
+  useEffect(() => {
+    const fetchMessages = async () => {
+      const { data } = await supabase.from('messages').select('*').order('created_at', { ascending: true })
+      setMessages(data || [])
+    }
+    fetchMessages()
+
+    const channel = supabase
+      .channel('messages')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+        setMessages((current) => [...current, payload.new])
+      })
+      .subscribe()
+
+    return () => supabase.removeChannel(channel)
+  }, [])
+
   const handleLogout = async () => {
     await supabase.auth.signOut()
+  }
+
+  const handleSendMessage = async (e) => {
+    e.preventDefault()
+    if (!newMessage.trim()) return
+    await supabase.from('messages').insert({
+      content: newMessage,
+      user_id: session.user.id,
+      user_email: session.user.email,
+    })
+    setNewMessage('')
   }
   
   const handleSubmit = async (e) => {
@@ -47,14 +79,42 @@ function App() {
 
   if (session) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-100">
-        <div className="bg-white p-8 rounded-lg shadow-md w-80 text-center">
-          <h1 className="text-2xl font-bold mb-4">Welcome to Connext</h1>
-          <p className="text-gray-500 mb-6">{session.user.email}</p>
-          <button onClick={handleLogout} className="w-full bg-red-600 text-white p-2 rounded hover:bg-red-600/90">
-            Log Out
-          </button>
+      <div className="flex flex-col h-screen bg-gray-100">
+        <div className="bg-white shadow p-4 flex justify-between items-center">
+          <h1 className="text-xl font-bold">Connext</h1>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-gray-500">{session.user.email}</span>
+            <button onClick={() => setShowProfile(true)} className="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300">
+              Edit Profile
+            </button>
+            <button onClick={handleLogout} className="text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-600/90">
+              Log Out
+            </button>
+          </div>
         </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          {messages.map((msg) => (
+            <div key={msg.id} className="bg-white p-2 rounded shadow-sm max-w-md">
+              <span className="text-xs text-gray-500 block">{msg.user_email}</span>
+              <span>{msg.content}</span>
+            </div>
+          ))}
+        </div>
+
+        <form onSubmit={handleSendMessage} className="p-4 bg-white flex gap-2">
+          <input
+            type="text"
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            placeholder="Type a message..."
+            className="flex-1 border rounded p-2"
+          />
+          <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-600/90">
+            Send
+          </button>
+        </form>
+        {showProfile && <Profile session={session} onClose={() => setShowProfile(false)} />}
       </div>
     )
   }
