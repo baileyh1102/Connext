@@ -2,18 +2,30 @@ import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
 import Profile from './Profile'
 import Dashboard from './Dashboard'
+import ServerRail from './ServerRail'
+import ChannelSidebar from './ChannelSidebar'
+import ChatView from './ChatView'
 
 function App() {
+  // ---- AUTH STATE ----
   const [session, setSession] = useState(null)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [message, setMessage] = useState('')
   const [isLogin, setIsLogin] = useState(false)
+
+  // ---- CHANNEL STATE ----
+  const [selectedChannel, setSelectedChannel] = useState(null)
+
+  // ---- CHAT STATE ----
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState('')
+
+  // ---- PROFILE / DASHBOARD STATE ----
   const [showProfile, setShowProfile] = useState(false)
   const [showDashboard, setShowDashboard] = useState(false)
   const [profile, setProfile] = useState(null)
+  const [profilesMap, setProfilesMap] = useState({})
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -27,22 +39,48 @@ function App() {
     return () => subscription.unsubscribe()
   }, [])
 
+  // Fetches messages for the SELECTED CHANNEL only, and re-runs whenever
+  // the selected channel changes. Realtime listener also filters by channel_id
+  // so messages from other channels don't leak into this one.
   useEffect(() => {
+    if (!selectedChannel) return
+
     const fetchMessages = async () => {
-      const { data } = await supabase.from('messages').select('*').order('created_at', { ascending: true })
+      const { data } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('channel_id', selectedChannel.id)
+        .order('created_at', { ascending: true })
       setMessages(data || [])
     }
     fetchMessages()
 
     const channel = supabase
-      .channel('messages')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+      .channel(`messages-${selectedChannel.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${selectedChannel.id}` }, (payload) => {
         setMessages((current) => [...current, payload.new])
       })
       .subscribe()
 
     return () => supabase.removeChannel(channel)
-  }, [])
+  }, [selectedChannel])
+
+  useEffect(() => {
+    const fetchProfiles = async () => {
+      const userIds = [...new Set(messages.map((m) => m.user_id))]
+      if (userIds.length === 0) return
+
+      const { data } = await supabase
+        .from('profiles')
+        .select('user_id, display_name, avatar_url')
+        .in('user_id', userIds)
+
+      const map = {}
+      data?.forEach((p) => { map[p.user_id] = p })
+      setProfilesMap(map)
+    }
+    fetchProfiles()
+  }, [messages])
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -55,6 +93,26 @@ function App() {
     }
     if (session) loadProfile()
   }, [session, showProfile])
+
+  const formatTime = (timestamp) => {
+    return new Date(timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  }
+
+  const formatDateLabel = (timestamp) => {
+    const date = new Date(timestamp)
+    const today = new Date()
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
+
+    if (date.toDateString() === today.toDateString()) return 'Today'
+    if (date.toDateString() === yesterday.toDateString()) return 'Yesterday'
+    return date.toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' })
+  }
+
+  const isNewDay = (current, previous) => {
+    if (!previous) return true
+    return new Date(current).toDateString() !== new Date(previous).toDateString()
+  }
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -76,66 +134,65 @@ function App() {
 
   const handleSendMessage = async (e) => {
     e.preventDefault()
-    if (!newMessage.trim()) return
-    await supabase.from('messages').insert({
+    if (!newMessage.trim() || !selectedChannel) return
+    const { error } = await supabase.from('messages').insert({
       content: newMessage,
       user_id: session.user.id,
       user_email: session.user.email,
+      channel_id: selectedChannel.id,
     })
+    if (error) console.log('Send message error:', error)
     setNewMessage('')
   }
 
+  // ================= LOGGED-IN VIEW =================
   if (session) {
     return (
-      <div className="flex flex-col h-screen bg-gray-100">
-        <div className="bg-white shadow p-4 flex justify-between items-center relative">
-          <h1 className="text-xl font-bold">Connext</h1>
-          <button onClick={() => setShowDashboard(!showDashboard)} className="flex items-center gap-2">
-            {profile?.avatar_url ? (
-              <img src={profile.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full object-cover" />
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-gray-300" />
+      <div className="flex h-screen">
+        <ServerRail />
+        <ChannelSidebar selectedChannel={selectedChannel} setSelectedChannel={setSelectedChannel} />
+
+        <div className="flex flex-col flex-1">
+          {/* ---- HEADER: current channel name + avatar button that opens the dashboard dropdown ---- */}
+          <div className="bg-white shadow p-4 flex justify-between items-center relative">
+            <h1 className="text-xl font-bold"># {selectedChannel?.name || '...'}</h1>
+            <button onClick={() => setShowDashboard(!showDashboard)} className="flex items-center gap-2">
+              {profile?.avatar_url ? (
+                <img src={profile.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full object-cover" />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-gray-300" />
+              )}
+            </button>
+
+            {showDashboard && (
+              <Dashboard
+                profile={profile}
+                session={session}
+                onEditProfile={() => { setShowDashboard(false); setShowProfile(true) }}
+                onLogout={() => { setShowDashboard(false); handleLogout() }}
+                onClose={() => setShowDashboard(false)}
+              />
             )}
-          </button>
+          </div>
 
-          {showDashboard && (
-            <Dashboard
-              profile={profile}
-              session={session}
-              onEditProfile={() => { setShowDashboard(false); setShowProfile(true) }}
-              onLogout={() => { setShowDashboard(false); handleLogout() }}
-              onClose={() => setShowDashboard(false)}
-            />
-          )}
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
-          {messages.map((msg) => (
-            <div key={msg.id} className="bg-white p-2 rounded shadow-sm max-w-md">
-              <span className="text-xs text-gray-500 block">{msg.user_email}</span>
-              <span>{msg.content}</span>
-            </div>
-          ))}
-        </div>
-
-        <form onSubmit={handleSendMessage} className="p-4 bg-white flex gap-2">
-          <input
-            type="text"
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            placeholder="Type a message..."
-            className="flex-1 border rounded p-2"
+          <ChatView
+            messages={messages}
+            profilesMap={profilesMap}
+            newMessage={newMessage}
+            setNewMessage={setNewMessage}
+            handleSendMessage={handleSendMessage}
+            formatTime={formatTime}
+            formatDateLabel={formatDateLabel}
+            isNewDay={isNewDay}
           />
-          <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-600/90">
-            Send
-          </button>
-        </form>
+        </div>
 
         {showProfile && <Profile session={session} onClose={() => setShowProfile(false)} />}
       </div>
     )
   }
 
+  // ================= LOGGED-OUT VIEW: login/signup form =================
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100">
       <form onSubmit={handleSubmit} className="bg-white p-8 rounded-lg shadow-md w-80">
