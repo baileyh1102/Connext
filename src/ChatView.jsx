@@ -20,9 +20,9 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
               )}
               <div className="flex items-start gap-3">
                 {senderProfile?.avatar_url ? (
-                  <img src={senderProfile.avatar_url} alt="Avatar" className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
+                  <img src={senderProfile.avatar_url} alt="Avatar" className="w-9 h-9 rounded-full object-cover shrink-0" />
                 ) : (
-                  <div className="w-9 h-9 rounded-full bg-gray-300 flex-shrink-0" />
+                  <div className="w-9 h-9 rounded-full bg-gray-300 shrink-0" />
                 )}
                 <div className="max-w-md">
                   <div className="flex items-baseline gap-2">
