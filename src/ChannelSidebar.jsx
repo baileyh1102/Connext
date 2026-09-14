@@ -112,7 +112,12 @@ function ChannelItem({ ch, isSelected, onSelect, onDelete, onRename }) {
             Rename Channel
           </button>
           <button
-            onClick={() => { onDelete(ch.id); setShowMenu(false) }}
+            onClick={() => {
+              if (window.confirm(`Delete #${ch.name}? This will also delete all its messages.`)) {
+                onDelete(ch.id)
+              }
+              setShowMenu(false)
+            }}
             className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-gray-800"
           >
             Delete Channel
@@ -123,9 +128,101 @@ function ChannelItem({ ch, isSelected, onSelect, onDelete, onRename }) {
   )
 }
 
-// ChannelSidebar fetches real channels, supports selecting, creating,
-// renaming, deleting, and drag-and-drop reordering.
-function ChannelSidebar({ selectedChannel, setSelectedChannel }) {
+// The hamburger menu next to the server name — the "menu hub" for
+// server-level actions: rename and delete, with room for more later.
+function ServerMenu({ selectedServer, onDeleteServer, onRenameServer }) {
+  const [showMenu, setShowMenu] = useState(false)
+  const [isRenaming, setIsRenaming] = useState(false)
+  const [renameValue, setRenameValue] = useState(selectedServer.name)
+  const menuRef = useRef(null)
+
+  useEffect(() => {
+    if (!showMenu) return
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setShowMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showMenu])
+
+  // Keep the rename input's starting value in sync if the selected server changes
+  useEffect(() => {
+    setRenameValue(selectedServer.name)
+  }, [selectedServer])
+
+  const submitRename = () => {
+    const cleaned = renameValue.trim()
+    if (cleaned && cleaned !== selectedServer.name) {
+      onRenameServer(selectedServer.id, cleaned)
+    }
+    setIsRenaming(false)
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setShowMenu(!showMenu)}
+        className="text-gray-400 hover:text-white p-1"
+        aria-label="Server menu"
+      >
+        <div className="flex flex-col gap-[3px]">
+          <span className="block w-4 h-0.5 bg-current"></span>
+          <span className="block w-4 h-0.5 bg-current"></span>
+          <span className="block w-4 h-0.5 bg-current"></span>
+        </div>
+      </button>
+
+      {showMenu && (
+        <div
+          ref={menuRef}
+          className="absolute left-0 top-8 bg-gray-900 border border-gray-700 rounded shadow-lg z-20 w-44"
+        >
+          {isRenaming ? (
+            <div className="p-2">
+              <input
+                type="text"
+                autoFocus
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onBlur={submitRename}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') submitRename()
+                  if (e.key === 'Escape') { setRenameValue(selectedServer.name); setIsRenaming(false) }
+                }}
+                className="w-full bg-gray-800 text-white text-sm p-1.5 rounded outline-none"
+              />
+            </div>
+          ) : (
+            <button
+              onClick={() => setIsRenaming(true)}
+              className="w-full text-left px-3 py-2 text-sm text-gray-200 hover:bg-gray-800"
+            >
+              Rename Server
+            </button>
+          )}
+          <button
+            onClick={() => {
+              if (window.confirm(`Delete "${selectedServer.name}"? This will also delete all its channels and messages.`)) {
+                onDeleteServer(selectedServer.id)
+              }
+              setShowMenu(false)
+            }}
+            className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-gray-800"
+          >
+            Delete Server
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ChannelSidebar fetches real channels for the SELECTED SERVER, supports
+// selecting, creating, renaming, deleting, and drag-and-drop reordering.
+// The header also holds the hamburger menu for server-level actions.
+function ChannelSidebar({ selectedChannel, setSelectedChannel, selectedServer, onDeleteServer, onRenameServer }) {
   const [channels, setChannels] = useState([])
   const [newChannelName, setNewChannelName] = useState('')
   const [showAddForm, setShowAddForm] = useState(false)
@@ -133,28 +230,36 @@ function ChannelSidebar({ selectedChannel, setSelectedChannel }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
   useEffect(() => {
+    if (!selectedServer) return
+
     const fetchChannels = async () => {
-      const { data } = await supabase.from('channels').select('*').order('position', { ascending: true })
+      const { data } = await supabase
+        .from('channels')
+        .select('*')
+        .eq('server_id', selectedServer.id)
+        .order('position', { ascending: true })
       setChannels(data || [])
-      if (data && data.length > 0 && !selectedChannel) {
-        setSelectedChannel(data[0])
+      if (data && data.length > 0) {
+        setSelectedChannel(data[0]) // auto-select first channel whenever the server changes
+      } else {
+        setSelectedChannel(null)
       }
     }
     fetchChannels()
 
     const channel = supabase
-      .channel('channels-list')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'channels' }, () => {
+      .channel(`channels-list-${selectedServer.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'channels', filter: `server_id=eq.${selectedServer.id}` }, () => {
         fetchChannels()
       })
       .subscribe()
 
     return () => supabase.removeChannel(channel)
-  }, [])
+  }, [selectedServer])
 
   const handleAddChannel = async (e) => {
     e.preventDefault()
-    if (!newChannelName.trim()) return
+    if (!newChannelName.trim() || !selectedServer) return
 
     const { data: { user } } = await supabase.auth.getUser()
     const nextPosition = channels.length > 0 ? Math.max(...channels.map((c) => c.position)) + 1 : 1
@@ -163,6 +268,7 @@ function ChannelSidebar({ selectedChannel, setSelectedChannel }) {
       name: newChannelName.trim().toLowerCase().replace(/\s+/g, '-'),
       created_by: user.id,
       position: nextPosition,
+      server_id: selectedServer.id,
     })
     setNewChannelName('')
     setShowAddForm(false)
@@ -202,8 +308,11 @@ function ChannelSidebar({ selectedChannel, setSelectedChannel }) {
 
   return (
     <div className="w-56 bg-gray-800 text-gray-300 flex flex-col">
-      <div className="p-4 font-bold text-white border-b border-gray-700">
-        Connext
+      <div className="p-4 font-bold text-white border-b border-gray-700 flex items-center justify-between">
+        <span className="truncate">{selectedServer?.name || 'Connext'}</span>
+        {selectedServer && (
+          <ServerMenu selectedServer={selectedServer} onDeleteServer={onDeleteServer} onRenameServer={onRenameServer} />
+        )}
       </div>
       <div className="flex-1 overflow-y-auto p-2">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>

@@ -1,1 +1,12 @@
 @import "tailwindcss";
+
+@theme {
+  --color-connext-bg: #161616;        /* main chat background */
+  --color-connext-bg-alt: #1e1e1e;    /* channel sidebar */
+  --color-connext-bg-rail: #0d0d0d;   /* server rail (darkest) */
+  --color-connext-bubble: #242424;    /* message bubbles */
+  --color-connext-red: #E24B4A;       /* primary accent */
+  --color-connext-red-hover: #c73d3c; /* accent hover state */
+  --color-connext-text: #f5f5f5;      /* primary text on dark */
+  --color-connext-text-muted: #9a9a9a; /* secondary/muted text */
+}
