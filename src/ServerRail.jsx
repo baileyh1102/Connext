@@ -52,9 +52,9 @@ function ServerRail({ servers, selectedServer, setSelectedServer, onAddServer, o
       ) : (
         <button
           onClick={() => setShowAddForm(true)}
-          className="w-12 h-12 rounded-2xl bg-indigo-800 flex items-center justify-center text-indigo-300 text-2xl hover:bg-indigo-700 hover:text-white hover:rounded-xl transition-all flex-shrink-0"
+          className="w-12 h-12 rounded-2xl bg-indigo-800 flex items-center justify-center text-indigo-300 text-2xl leading-none hover:bg-indigo-700 hover:text-white hover:rounded-xl transition-all flex-shrink-0"
         >
-          +
+          <span className="-translate-y-px">+</span>
         </button>
       )}
     </div>
