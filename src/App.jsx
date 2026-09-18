@@ -46,6 +46,7 @@ function App() {
     fetchOtherProfile()
   }, [selectedConversation])
   const [showServerSettings, setShowServerSettings] = useState(false)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false) // controls the overlay sidebar on small screens only
 
   // ---- CHAT STATE ----
   const [messages, setMessages] = useState([]) // top-level messages only (parent_id is null)
@@ -588,18 +589,22 @@ function App() {
           isDMActive={currentPage === 'dm'}
         />
         {/* Channel sidebar only makes sense on the Chat page — other pages (Prayer Wall, Calendar) aren't organized by channel */}
-        {/* Outer wrapper collapses its WIDTH to 0 when leaving Chat, so Home/Calendar
-            reclaim that space. Inner wrapper slides its CONTENTS left at the same time,
-            creating the "sliding behind the server rail" effect rather than an abrupt cut. */}
+        {/* On mobile: a backdrop appears behind the open sidebar so tapping outside closes it */}
+        {mobileSidebarOpen && currentPage === 'chat' && (
+          <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setMobileSidebarOpen(false)} />
+        )}
+
+        {/* Mobile: fixed overlay that slides over the chat area, toggled by the hamburger button.
+            Desktop (md+): unchanged from before — pushes/slides inline based on currentPage. */}
         <div
-          className={`h-full overflow-hidden transition-all duration-300 ease-in-out flex-shrink-0 ${
-            currentPage === 'chat' ? 'w-56' : 'w-0'
-          }`}
+          className={`fixed md:static inset-y-0 left-16 md:left-auto z-40 md:z-auto h-full overflow-hidden transition-all duration-300 ease-in-out flex-shrink-0 ${
+            mobileSidebarOpen && currentPage === 'chat' ? 'w-56' : 'w-0'
+          } ${currentPage === 'chat' ? 'md:w-56' : 'md:w-0'}`}
         >
           <div
             className={`w-56 h-full transition-transform duration-300 ease-in-out ${
-              currentPage === 'chat' ? 'translate-x-0' : '-translate-x-full'
-            }`}
+              mobileSidebarOpen && currentPage === 'chat' ? 'translate-x-0' : '-translate-x-full'
+            } ${currentPage === 'chat' ? 'md:translate-x-0' : 'md:-translate-x-full'}`}
           >
             <ChannelSidebar
               selectedChannel={selectedChannel}
@@ -636,9 +641,22 @@ function App() {
             <img
               src={connextLogo}
               alt="Connext"
-              className="absolute left-1/2 -translate-x-1/2 h-15"
+              className="hidden md:block absolute left-1/2 -translate-x-1/2 h-15"
             />
             <div className="flex items-center gap-4">
+              {(currentPage === 'chat' || currentPage === 'dm') && (
+                <button
+                  onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+                  className="md:hidden text-gray-600"
+                  aria-label="Toggle sidebar"
+                >
+                  <div className="flex flex-col gap-1">
+                    <span className="block w-5 h-0.5 bg-current"></span>
+                    <span className="block w-5 h-0.5 bg-current"></span>
+                    <span className="block w-5 h-0.5 bg-current"></span>
+                  </div>
+                </button>
+              )}
               <PageNav currentPage={currentPage} setCurrentPage={setCurrentPage} />
               {currentPage === 'chat' && (
                 <span className="text-gray-400 text-sm"># {selectedChannel?.name || '...'}</span>

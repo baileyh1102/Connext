@@ -15,3 +15,10 @@
   --color-connext-text: #f5f5f5;      /* primary text on dark */
   --color-connext-text-muted: #9a9a9a; /* secondary/muted text */
 }
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow-x: hidden;
+}
