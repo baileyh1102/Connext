@@ -1,5 +1,5 @@
 // PageNav is the tab switcher between a server's different sections
-// (Chat, Prayer Wall, Calendar, ...). Lives in the header, to the left
+// (Chat, Home, Calendar, ...). Lives in the header, to the left
 // of the profile avatar button. Purely presentational — App.jsx owns
 // which page is active.
 const PAGES = [

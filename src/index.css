@@ -1,4 +1,9 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&display=swap');
+
+@theme {
+  --font-heading: 'Fredoka', sans-serif;
+}
 
 @theme {
   --color-connext-bg: #161616;        /* main chat background */

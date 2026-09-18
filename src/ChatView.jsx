@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import ReactionPicker from './ReactionPicker'
 import attachIcon from './assets/icons8-add-file-50.png'
+import UserProfileCard from './UserProfileCard'
 
 // Renders a message's attachment according to its type — an image, a video/audio
 // player, or a document link for PDFs.
@@ -31,7 +32,7 @@ function Attachment({ url, type, name }) {
 
 // ChatView displays the message list for the currently selected channel,
 // plus the input bar for sending new messages (text or file attachments).
-function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSendMessage, handleSendAttachment, handleEditMessage, handleDeleteMessage, formatTime, formatDateLabel, isNewDay, currentUserId, replyCounts, onOpenThread, reactionsMap, onToggleReaction }) {
+function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSendMessage, handleSendAttachment, handleEditMessage, handleDeleteMessage, formatTime, formatDateLabel, isNewDay, currentUserId, replyCounts, onOpenThread, reactionsMap, onToggleReaction, canManageMessages }) {
   const [editingId, setEditingId] = useState(null)
   const [editValue, setEditValue] = useState('')
   const bottomRef = useRef(null) // an invisible marker at the end of the message list we scroll to
@@ -39,6 +40,7 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
 
   const [pendingFile, setPendingFile] = useState(null) // a file selected but not yet sent
   const [previewUrl, setPreviewUrl] = useState(null) // an object URL for showing an image/video preview
+  const [viewingProfile, setViewingProfile] = useState(null) // the profile object currently shown in the popup
 
   // Scrolls to the bottom marker whenever the message list changes (new message sent or received)
   useEffect(() => {
@@ -131,16 +133,21 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
                 </div>
               )}
               <div className="flex items-start gap-3">
-                {senderProfile?.avatar_url ? (
-                  <img src={senderProfile.avatar_url} alt="Avatar" className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
-                ) : (
-                  <div className="w-9 h-9 rounded-full bg-gray-300 flex-shrink-0" />
-                )}
+                <button onClick={() => setViewingProfile({ profile: senderProfile, email: msg.user_email })} className="flex-shrink-0">
+                  {senderProfile?.avatar_url ? (
+                    <img src={senderProfile.avatar_url} alt="Avatar" className="w-9 h-9 rounded-full object-cover" />
+                  ) : (
+                    <div className="w-9 h-9 rounded-full bg-gray-300" />
+                  )}
+                </button>
                 <div className="max-w-md flex-1">
                   <div className="flex items-baseline gap-2">
-                    <span className="text-sm font-semibold">
+                    <button
+                      onClick={() => setViewingProfile({ profile: senderProfile, email: msg.user_email })}
+                      className="text-sm font-semibold hover:underline"
+                    >
                       {senderProfile?.display_name || msg.user_email}
-                    </span>
+                    </button>
                     <span className="text-xs text-gray-400">{formatTime(msg.created_at)}</span>
                     {msg.edited && <span className="text-xs text-gray-400">(edited)</span>}
                   </div>
@@ -166,15 +173,48 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
                       </div>
                     </div>
                   ) : (
-                    <div className="flex flex-col items-start mt-1 peer">
-                      {msg.content && (
-                        <div className="bg-white p-2 rounded shadow-sm">
-                          <span className="whitespace-pre-wrap">{msg.content}</span>
+                    <div className="flex flex-col items-start mt-1">
+                      <div className="relative inline-block group">
+                        {msg.content && (
+                          <div className="bg-white p-2 rounded shadow-sm">
+                            <span className="whitespace-pre-wrap">{msg.content}</span>
+                          </div>
+                        )}
+                        {msg.attachment_url && (
+                          <Attachment url={msg.attachment_url} type={msg.attachment_type} name={msg.attachment_name} />
+                        )}
+
+                        {/* ---- HOVER ACTIONS: React / Reply / Edit / Delete — positioned to the RIGHT of the bubble, absolute so it never affects vertical spacing ---- */}
+                        <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 flex items-center gap-3 opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity bg-white shadow-md rounded-full px-3 py-1.5 whitespace-nowrap z-10">
+                          <ReactionPicker onSelect={(emoji) => onToggleReaction(msg.id, emoji)} />
+                          <button
+                            onClick={() => onOpenThread(msg)}
+                            className="text-base text-gray-400 hover:text-gray-600"
+                          >
+                            ↰
+                          </button>
+                          {(isOwnMessage || canManageMessages) && (
+                            <>
+                              <button
+                                onClick={() => startEditing(msg)}
+                                className="text-base text-gray-400 hover:text-gray-600"
+                              >
+                                ✎
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (window.confirm('Delete this message?')) {
+                                    handleDeleteMessage(msg.id)
+                                  }
+                                }}
+                                className="text-xs text-red-400 hover:text-red-600"
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
                         </div>
-                      )}
-                      {msg.attachment_url && (
-                        <Attachment url={msg.attachment_url} type={msg.attachment_type} name={msg.attachment_name} />
-                      )}
+                      </div>
 
                       {Object.keys(groupedReactions).length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-1">
@@ -203,37 +243,6 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
                           {replyCounts[msg.id]} {replyCounts[msg.id] === 1 ? 'reply' : 'replies'}
                         </button>
                       )}
-
-                      {/* ---- HOVER ACTIONS: React / Reply / Edit / Delete ---- */}
-                      <div className="flex items-center gap-3 opacity-0 peer-hover:opacity-100 hover:opacity-100 transition-opacity mt-2 bg-white shadow-md rounded-full px-3 py-1.5 w-fit">
-                        <ReactionPicker onSelect={(emoji) => onToggleReaction(msg.id, emoji)} />
-                        <button
-                          onClick={() => onOpenThread(msg)}
-                          className="text-base text-gray-400 hover:text-gray-600"
-                        >
-                          ↰
-                        </button>
-                        {isOwnMessage && (
-                          <>
-                            <button
-                              onClick={() => startEditing(msg)}
-                              className="text-base text-gray-400 hover:text-gray-600"
-                            >
-                              ✎
-                            </button>
-                            <button
-                              onClick={() => {
-                                if (window.confirm('Delete this message?')) {
-                                  handleDeleteMessage(msg.id)
-                                }
-                              }}
-                              className="text-xs text-red-400 hover:text-red-600"
-                            >
-                              Delete
-                            </button>
-                          </>
-                        )}
-                      </div>
                     </div>
                   )}
                 </div>
@@ -243,6 +252,14 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
         })}
         <div ref={bottomRef} />
       </div>
+
+      {viewingProfile && (
+        <UserProfileCard
+          profile={viewingProfile.profile}
+          email={viewingProfile.email}
+          onClose={() => setViewingProfile(null)}
+        />
+      )}
 
       {/* ---- MESSAGE INPUT BAR ---- */}
       <div className="bg-white">

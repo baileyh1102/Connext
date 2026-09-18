@@ -6,19 +6,40 @@ const TABS = [
   { id: 'permissions', label: 'Permissions' },
 ]
 
-const PERMISSION_KEYS = [
-  { key: 'can_view', label: 'View channel' },
-  { key: 'can_send_messages', label: 'Send messages' },
-  { key: 'can_react', label: 'React to messages' },
-  { key: 'can_reply', label: 'Reply to messages' },
-  { key: 'can_edit_delete_own', label: 'Edit/delete own messages' },
+const PERMISSIONS = [
+  { key: 'can_view', label: 'View Channel', description: 'Allows the role to see this channel exists and read its messages.' },
+  { key: 'can_send_messages', label: 'Send Messages', description: 'Allows the role to post new messages in this channel.' },
+  { key: 'can_react', label: 'React to Messages', description: 'Allows the role to add emoji reactions to messages.' },
+  { key: 'can_reply', label: 'Reply to Messages', description: 'Allows the role to start or add to message threads.' },
+  { key: 'can_edit_delete_own', label: 'Edit/Delete Own Messages', description: 'Allows the role to edit or delete messages they sent in this channel.' },
 ]
+
+const DEFAULT_PERMS = PERMISSIONS.reduce((acc, p) => ({ ...acc, [p.key]: true }), {})
+
+// Pill-shaped on/off switch — matches the one used in ServerSettings' role editor
+function ToggleSwitch({ checked, onChange }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-6 w-10 shrink-0 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none ${
+        checked ? 'bg-green-500' : 'bg-gray-300'
+      }`}
+    >
+      <span
+        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ease-in-out ${
+          checked ? 'translate-x-5' : 'translate-x-1'
+        }`}
+      />
+    </button>
+  )
+}
 
 // ChannelSettings is a Discord-style modal for one channel: General info
 // (name/description) and Permissions (per-role control over viewing and
-// interacting with the channel). Only someone with the server's
-// "Manage channels" permission (or the server creator) can open/edit this —
-// gated by ChannelSidebar before this component is even rendered.
+// interacting with the channel). Styled to match ServerSettings.
 function ChannelSettings({ channel, server, onClose, onDeleted, onUpdated }) {
   const [activeTab, setActiveTab] = useState('general')
 
@@ -30,9 +51,10 @@ function ChannelSettings({ channel, server, onClose, onDeleted, onUpdated }) {
 
   // ---- PERMISSIONS TAB STATE ----
   const [roles, setRoles] = useState([])
-  const [permissionsByRole, setPermissionsByRole] = useState({}) // { roleKey ('default' or role id): { can_view, ... } }
+  const [selectedRoleKey, setSelectedRoleKey] = useState('default') // 'default' or a role id
+  const [permissionsByRole, setPermissionsByRole] = useState({})
 
-  const DEFAULT_KEY = 'default' // represents "members with no role assigned"
+  const DEFAULT_KEY = 'default'
 
   useEffect(() => {
     if (activeTab !== 'permissions') return
@@ -44,11 +66,8 @@ function ChannelSettings({ channel, server, onClose, onDeleted, onUpdated }) {
       const { data: permRows } = await supabase.from('channel_permissions').select('*').eq('channel_id', channel.id)
 
       const map = {}
-      // Start every role (plus "default") with fully-open permissions unless a row overrides it
       const allKeys = [DEFAULT_KEY, ...(roleRows || []).map((r) => r.id)]
-      allKeys.forEach((key) => {
-        map[key] = { can_view: true, can_send_messages: true, can_react: true, can_reply: true, can_edit_delete_own: true }
-      })
+      allKeys.forEach((key) => { map[key] = { ...DEFAULT_PERMS } })
       permRows?.forEach((row) => {
         const key = row.role_id === null ? DEFAULT_KEY : row.role_id
         map[key] = row
@@ -77,14 +96,13 @@ function ChannelSettings({ channel, server, onClose, onDeleted, onUpdated }) {
     setSaving(false)
   }
 
-  const togglePermission = async (roleKey, permKey) => {
-    const current = permissionsByRole[roleKey]
+  const togglePermission = async (permKey) => {
+    const current = permissionsByRole[selectedRoleKey]
     const updated = { ...current, [permKey]: !current[permKey] }
-    setPermissionsByRole((prev) => ({ ...prev, [roleKey]: updated }))
+    setPermissionsByRole((prev) => ({ ...prev, [selectedRoleKey]: updated }))
 
-    const roleIdForDb = roleKey === DEFAULT_KEY ? null : roleKey
+    const roleIdForDb = selectedRoleKey === DEFAULT_KEY ? null : selectedRoleKey
 
-    // Upsert: create the row if it doesn't exist yet, otherwise update it
     await supabase
       .from('channel_permissions')
       .upsert(
@@ -100,8 +118,10 @@ function ChannelSettings({ channel, server, onClose, onDeleted, onUpdated }) {
     }
   }
 
+  const currentPerms = permissionsByRole[selectedRoleKey] || DEFAULT_PERMS
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 text-gray-900">
       <div className="bg-white rounded-lg shadow-lg w-[700px] h-[80vh] flex overflow-hidden">
         {/* ---- LEFT NAV ---- */}
         <div className="w-48 bg-gray-100 p-4 flex flex-col">
@@ -168,48 +188,37 @@ function ChannelSettings({ channel, server, onClose, onDeleted, onUpdated }) {
             {/* ---- PERMISSIONS TAB ---- */}
             {activeTab === 'permissions' && (
               <div>
-                <p className="text-sm text-gray-500 mb-4">
-                  Control what each role can do in this channel. The server creator can always see and manage everything, regardless of these settings.
-                </p>
+                <h3 className="text-sm font-semibold text-gray-400 uppercase mb-1">Role</h3>
+                <select
+                  value={selectedRoleKey}
+                  onChange={(e) => setSelectedRoleKey(e.target.value === DEFAULT_KEY ? DEFAULT_KEY : Number(e.target.value))}
+                  className="w-full text-sm border rounded p-1.5 mb-6"
+                >
+                  <option value={DEFAULT_KEY}>Default (no role)</option>
+                  {roles.map((r) => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
 
-                {/* "Default" row — members with no role assigned */}
-                <div className="mb-6 pb-4 border-b">
-                  <h3 className="text-sm font-semibold mb-2">Default (no role)</h3>
-                  <div className="grid grid-cols-2 gap-2">
-                    {PERMISSION_KEYS.map(({ key, label }) => (
-                      <label key={key} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={permissionsByRole[DEFAULT_KEY]?.[key] ?? true}
-                          onChange={() => togglePermission(DEFAULT_KEY, key)}
-                        />
-                        {label}
-                      </label>
-                    ))}
-                  </div>
+                <h3 className="text-sm font-semibold text-gray-400 uppercase mb-2">Permissions</h3>
+                <div className="divide-y">
+                  {PERMISSIONS.map((p) => (
+                    <div key={p.key} className="flex items-center justify-between gap-4 py-3">
+                      <div>
+                        <p className="text-sm font-medium">{p.label}</p>
+                        <p className="text-xs text-gray-400">{p.description}</p>
+                      </div>
+                      <ToggleSwitch
+                        checked={currentPerms[p.key]}
+                        onChange={() => togglePermission(p.key)}
+                      />
+                    </div>
+                  ))}
                 </div>
 
-                {roles.length === 0 && (
-                  <p className="text-sm text-gray-400">No roles created yet — create roles in Server Settings to give them channel-specific permissions.</p>
-                )}
-
-                {roles.map((role) => (
-                  <div key={role.id} className="mb-6 pb-4 border-b last:border-b-0">
-                    <h3 className="text-sm font-semibold mb-2">{role.name}</h3>
-                    <div className="grid grid-cols-2 gap-2">
-                      {PERMISSION_KEYS.map(({ key, label }) => (
-                        <label key={key} className="flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={permissionsByRole[role.id]?.[key] ?? true}
-                            onChange={() => togglePermission(role.id, key)}
-                          />
-                          {label}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+                <p className="text-xs text-gray-400 mt-6">
+                  The server creator can always see and manage everything, regardless of these settings.
+                </p>
               </div>
             )}
           </div>

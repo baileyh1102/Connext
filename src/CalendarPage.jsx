@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
+import calendarWordmark from './assets/calendar_wordmark.png'
+import calendarBg from './assets/mascot_stock_image.png'
 
 // CalendarPage lets an admin connect a Google Calendar (via its secret iCal
 // link) and shows the resulting events. The actual custom calendar GRID
@@ -28,7 +30,10 @@ function CalendarPage({ selectedServer, isAdmin }) {
       setError(fnError.message)
     } else {
       setIsConnected(data.connected)
-      setEvents(data.events || [])
+      const sortedEvents = (data.events || []).sort(
+        (a, b) => new Date(a.start) - new Date(b.start)
+      )
+      setEvents(sortedEvents)
     }
     setLoading(false)
   }
@@ -66,14 +71,17 @@ function CalendarPage({ selectedServer, isAdmin }) {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto bg-gray-100 p-6">
-      <div className="max-w-2xl mx-auto">
-        <div className="flex justify-between items-center mb-4">
-          <h1 className="text-xl font-bold">📅 Calendar</h1>
+    <div
+      className="flex-1 overflow-y-auto bg-gray-100 p-6 flex flex-col"
+      style={{ backgroundImage: `url(${calendarBg})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+    >
+      <div className="max-w-2xl mx-auto w-full flex flex-col flex-1">
+        <div className="flex justify-center items-center mb-4 relative">
+          <img src={calendarWordmark} alt="Calendar" className="h-12" />
           {isAdmin && (
             <button
               onClick={() => setShowConnectForm(!showConnectForm)}
-              className="text-sm text-blue-600 hover:underline"
+              className="absolute right-0 text-sm text-blue-600 hover:underline"
             >
               {isConnected ? 'Update Calendar Link' : 'Connect Calendar'}
             </button>
@@ -113,7 +121,7 @@ function CalendarPage({ selectedServer, isAdmin }) {
         ) : events.length === 0 ? (
           <p className="text-center text-gray-400 py-12">No upcoming events.</p>
         ) : (
-          <div className="space-y-2">
+          <div className="border border-gray-200 bg-gray-50 px-4 py-4 space-y-2 flex-1 rounded-lg">
             {events.map((event, index) => (
               <button
                 key={index}

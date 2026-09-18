@@ -4,7 +4,7 @@ import ReactionPicker from './ReactionPicker'
 // ThreadPanel is a slide-out panel showing a parent message and all its
 // replies, with its own input box for adding more replies. Replies support
 // the same react/edit/delete actions as top-level messages.
-function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply, formatTime, currentUserId, handleEditMessage, handleDeleteMessage, reactionsMap, onToggleReaction }) {
+function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply, formatTime, currentUserId, handleEditMessage, handleDeleteMessage, reactionsMap, onToggleReaction, canManageMessages }) {
   const [replyText, setReplyText] = useState('')
   const [editingId, setEditingId] = useState(null)
   const [editValue, setEditValue] = useState('')
@@ -128,8 +128,35 @@ function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply
                   </div>
                 ) : (
                   <div className="flex flex-col items-start mt-1">
-                    <div className="bg-gray-100 p-2 rounded peer">
-                      <span className="whitespace-pre-wrap">{reply.content}</span>
+                    <div className="relative inline-block group">
+                      <div className="bg-gray-100 p-2 rounded">
+                        <span className="whitespace-pre-wrap">{reply.content}</span>
+                      </div>
+
+                      {/* ---- HOVER ACTIONS: React / Edit / Delete (no Reply-to-reply — threads stay one level deep) ---- */}
+                      <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 flex items-center gap-3 opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity bg-white shadow-md rounded-full px-3 py-1.5 whitespace-nowrap z-10">
+                        <ReactionPicker onSelect={(emoji) => onToggleReaction(reply.id, emoji)} />
+                        {(isOwnMessage || canManageMessages) && (
+                          <>
+                            <button
+                              onClick={() => startEditing(reply)}
+                              className="text-xs text-gray-400 hover:text-gray-600"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (window.confirm('Delete this reply?')) {
+                                  handleDeleteMessage(reply.id, parentMessage.id)
+                                }
+                              }}
+                              className="text-xs text-red-400 hover:text-red-600"
+                            >
+                              Delete
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
 
                     {/* ---- REACTION PILLS ---- */}
@@ -151,31 +178,6 @@ function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply
                         ))}
                       </div>
                     )}
-
-                    {/* ---- HOVER ACTIONS: React / Edit / Delete (no Reply-to-reply — threads stay one level deep) ---- */}
-                    <div className="flex items-center gap-3 opacity-0 peer-hover:opacity-100 hover:opacity-100 transition-opacity mt-2 bg-white shadow-md rounded-full px-3 py-1.5 w-fit">
-                      <ReactionPicker onSelect={(emoji) => onToggleReaction(reply.id, emoji)} />
-                      {isOwnMessage && (
-                        <>
-                          <button
-                            onClick={() => startEditing(reply)}
-                            className="text-base text-gray-400 hover:text-gray-600"
-                          >
-                            ✎
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (window.confirm('Delete this reply?')) {
-                                handleDeleteMessage(reply.id, parentMessage.id)
-                              }
-                            }}
-                            className="text-xs text-red-400 hover:text-red-600"
-                          >
-                            Delete
-                          </button>
-                        </>
-                      )}
-                    </div>
                   </div>
                 )}
               </div>

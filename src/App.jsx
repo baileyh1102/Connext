@@ -8,8 +8,11 @@ import ServerSettings from './ServerSettings'
 import ChatView from './ChatView'
 import ThreadPanel from './ThreadPanel'
 import PageNav from './PageNav'
+import connextLogo from './assets/connext_logo_with_mascot.png'
 import HomePage from './HomePage'
 import CalendarPage from './CalendarPage'
+import DMSidebar from './DMSidebar'
+import DMChatView from './DMChatview'
 
 function App() {
   // ---- AUTH STATE ----
@@ -25,7 +28,23 @@ function App() {
   const [servers, setServers] = useState([]) // servers the logged-in user belongs to
   const [selectedServer, setSelectedServer] = useState(null)
   const [selectedChannel, setSelectedChannel] = useState(null)
-  const [currentPage, setCurrentPage] = useState('chat') // 'chat' | 'home' | 'calendar'
+  const [currentPage, setCurrentPage] = useState('chat') // 'chat' | 'home' | 'calendar' | 'dm'
+  const [selectedConversation, setSelectedConversation] = useState(null)
+  const [conversationOtherProfile, setConversationOtherProfile] = useState(null)
+
+  // Loads the other participant's profile whenever the selected DM conversation changes
+  useEffect(() => {
+    if (!selectedConversation) {
+      setConversationOtherProfile(null)
+      return
+    }
+    const otherId = selectedConversation.user_a === session.user.id ? selectedConversation.user_b : selectedConversation.user_a
+    const fetchOtherProfile = async () => {
+      const { data } = await supabase.from('profiles').select('*').eq('user_id', otherId).single()
+      setConversationOtherProfile(data)
+    }
+    fetchOtherProfile()
+  }, [selectedConversation])
   const [showServerSettings, setShowServerSettings] = useState(false)
 
   // ---- CHAT STATE ----
@@ -40,6 +59,35 @@ function App() {
 
   // ---- REACTIONS STATE ----
   const [reactionsMap, setReactionsMap] = useState({}) // { messageId: [{ emoji, user_id }, ...] }
+
+  
+  // Whether the current user can moderate (edit/delete) OTHERS' messages in this server
+  const [canManageMessages, setCanManageMessages] = useState(false)
+
+  useEffect(() => {
+    if (!selectedServer || !session) return
+
+    const checkPermission = async () => {
+      if (selectedServer.created_by === session.user.id) {
+        setCanManageMessages(true)
+        return
+      }
+      const { data: memberRow } = await supabase
+        .from('server_members')
+        .select('role_id')
+        .eq('server_id', selectedServer.id)
+        .eq('user_id', session.user.id)
+        .single()
+
+      if (memberRow?.role_id) {
+        const { data: roleRow } = await supabase.from('roles').select('can_manage_messages').eq('id', memberRow.role_id).single()
+        setCanManageMessages(!!roleRow?.can_manage_messages)
+      } else {
+        setCanManageMessages(false)
+      }
+    }
+    checkPermission()
+  }, [selectedServer, session])
 
   // ---- PROFILE / DASHBOARD STATE ----
   const [showProfile, setShowProfile] = useState(false)
@@ -232,7 +280,7 @@ function App() {
 
       const { data } = await supabase
         .from('profiles')
-        .select('user_id, display_name, avatar_url')
+        .select('user_id, display_name, avatar_url, bio, contact_info')
         .in('user_id', userIds)
 
       const map = {}
@@ -296,6 +344,40 @@ function App() {
     }
   }
 
+  // Opens (or creates) a DM conversation with another user, then switches to it
+  const handleStartDM = async (otherUserId) => {
+    // Store the pair in a consistent order so the unique constraint (user_a, user_b)
+    // treats "me+them" and "them+me" as the same conversation
+    const [userA, userB] = [session.user.id, otherUserId].sort()
+
+    let { data: existing } = await supabase
+      .from('dm_conversations')
+      .select('*')
+      .eq('user_a', userA)
+      .eq('user_b', userB)
+      .maybeSingle()
+
+    if (!existing) {
+      const { data: created } = await supabase
+        .from('dm_conversations')
+        .insert({ user_a: userA, user_b: userB })
+        .select()
+        .single()
+      existing = created
+    }
+
+    setSelectedConversation(existing)
+    setCurrentPage('dm')
+  }
+
+  // Switches to a server AND always jumps to the Chat page, even if that server
+  // was already selected (setSelectedServer alone wouldn't re-trigger the
+  // currentPage-reset effect below in that case, since the value wouldn't change)
+  const handleSelectServer = (srv) => {
+    setSelectedServer(srv)
+    setCurrentPage('chat')
+  }
+
   // Adds a new server, makes the current user its first member, and switches to it
   const handleAddServer = async (name) => {
     if (!name.trim()) return
@@ -318,6 +400,45 @@ function App() {
       await supabase.from('server_members').insert({ server_id: newServer.id, user_id: session.user.id })
       setServers((current) => [...current, newServer])
       setSelectedServer(newServer)
+    }
+  }
+
+  // Redeems an invite code: joins the server it belongs to (assigning the invite's
+  // role, if any), then switches to that server
+  const handleJoinServer = async (code) => {
+    const trimmedCode = code.trim().toUpperCase()
+
+    const { data: invite, error: inviteError } = await supabase
+      .from('invites')
+      .select('*')
+      .eq('code', trimmedCode)
+      .eq('active', true)
+      .single()
+
+    if (inviteError || !invite) {
+      alert('Invalid or expired invite code.')
+      return
+    }
+
+    const { data: existingMembership } = await supabase
+      .from('server_members')
+      .select('*')
+      .eq('server_id', invite.server_id)
+      .eq('user_id', session.user.id)
+      .maybeSingle()
+
+    if (!existingMembership) {
+      await supabase.from('server_members').insert({
+        server_id: invite.server_id,
+        user_id: session.user.id,
+        role_id: invite.role_id,
+      })
+    }
+
+    const { data: serverRow } = await supabase.from('servers').select('*').eq('id', invite.server_id).single()
+    if (serverRow) {
+      setServers((current) => (current.some((s) => s.id === serverRow.id) ? current : [...current, serverRow]))
+      setSelectedServer(serverRow)
     }
   }
 
@@ -459,26 +580,71 @@ function App() {
           servers={servers}
           selectedServer={selectedServer}
           setSelectedServer={setSelectedServer}
+          onSelectServer={handleSelectServer}
           onAddServer={handleAddServer}
           onDeleteServer={handleDeleteServer}
+          onJoinServer={handleJoinServer}
+          onOpenDMs={() => setCurrentPage('dm')}
+          isDMActive={currentPage === 'dm'}
         />
         {/* Channel sidebar only makes sense on the Chat page — other pages (Prayer Wall, Calendar) aren't organized by channel */}
-        {currentPage === 'chat' && (
-          <ChannelSidebar
-            selectedChannel={selectedChannel}
-            setSelectedChannel={setSelectedChannel}
-            selectedServer={selectedServer}
-            onOpenServerSettings={() => setShowServerSettings(true)}
-          />
-        )}
+        {/* Outer wrapper collapses its WIDTH to 0 when leaving Chat, so Home/Calendar
+            reclaim that space. Inner wrapper slides its CONTENTS left at the same time,
+            creating the "sliding behind the server rail" effect rather than an abrupt cut. */}
+        <div
+          className={`h-full overflow-hidden transition-all duration-300 ease-in-out flex-shrink-0 ${
+            currentPage === 'chat' ? 'w-56' : 'w-0'
+          }`}
+        >
+          <div
+            className={`w-56 h-full transition-transform duration-300 ease-in-out ${
+              currentPage === 'chat' ? 'translate-x-0' : '-translate-x-full'
+            }`}
+          >
+            <ChannelSidebar
+              selectedChannel={selectedChannel}
+              setSelectedChannel={setSelectedChannel}
+              selectedServer={selectedServer}
+              onOpenServerSettings={() => setShowServerSettings(true)}
+              currentUserId={session.user.id}
+            />
+          </div>
+        </div>
 
+        {/* Same slide pattern, but for the DM sidebar — active when currentPage is 'dm' */}
+        <div
+          className={`h-full overflow-hidden transition-all duration-300 ease-in-out flex-shrink-0 ${
+            currentPage === 'dm' ? 'w-56' : 'w-0'
+          }`}
+        >
+          <div
+            className={`w-56 h-full transition-transform duration-300 ease-in-out ${
+              currentPage === 'dm' ? 'translate-x-0' : '-translate-x-full'
+            }`}
+          >
+            <DMSidebar
+              currentUserId={session.user.id}
+              selectedConversation={selectedConversation}
+              onSelectConversation={setSelectedConversation}
+              onStartDM={handleStartDM}
+            />
+          </div>
+        </div>
         <div className="flex flex-col flex-1">
           {/* ---- HEADER: page switcher (Chat/Prayer Wall/Calendar) + avatar button that opens the dashboard dropdown ---- */}
           <div className="bg-white shadow p-4 flex justify-between items-center relative">
+            <img
+              src={connextLogo}
+              alt="Connext"
+              className="absolute left-1/2 -translate-x-1/2 h-15"
+            />
             <div className="flex items-center gap-4">
               <PageNav currentPage={currentPage} setCurrentPage={setCurrentPage} />
               {currentPage === 'chat' && (
                 <span className="text-gray-400 text-sm"># {selectedChannel?.name || '...'}</span>
+              )}
+              {currentPage === 'dm' && (
+                <span className="text-gray-400 text-sm">{conversationOtherProfile?.display_name || '...'}</span>
               )}
             </div>
             <button onClick={() => setShowDashboard(!showDashboard)} className="flex items-center gap-2">
@@ -501,24 +667,25 @@ function App() {
           </div>
 
           {currentPage === 'chat' && (
-            <ChatView
-              messages={messages}
-              profilesMap={profilesMap}
-              newMessage={newMessage}
-              setNewMessage={setNewMessage}
-              handleSendMessage={handleSendMessage}
-              handleSendAttachment={handleSendAttachment}
-              handleEditMessage={handleEditMessage}
-              handleDeleteMessage={handleDeleteMessage}
-              formatTime={formatTime}
-              formatDateLabel={formatDateLabel}
-              isNewDay={isNewDay}
-              currentUserId={session.user.id}
-              replyCounts={replyCounts}
-              onOpenThread={setActiveThread}
-              reactionsMap={reactionsMap}
-              onToggleReaction={handleToggleReaction}
-            />
+          <ChatView
+            messages={messages}
+            profilesMap={profilesMap}
+            newMessage={newMessage}
+            setNewMessage={setNewMessage}
+            handleSendMessage={handleSendMessage}
+            handleSendAttachment={handleSendAttachment}
+            handleEditMessage={handleEditMessage}
+            handleDeleteMessage={handleDeleteMessage}
+            formatTime={formatTime}
+            formatDateLabel={formatDateLabel}
+            isNewDay={isNewDay}
+            currentUserId={session.user.id}
+            replyCounts={replyCounts}
+            onOpenThread={setActiveThread}
+            reactionsMap={reactionsMap}
+            onToggleReaction={handleToggleReaction}
+            canManageMessages={canManageMessages}
+          />
           )}
 
           {currentPage === 'home' && (
@@ -530,6 +697,20 @@ function App() {
           )}
           {currentPage === 'calendar' && (
             <CalendarPage selectedServer={selectedServer} isAdmin={profile?.is_admin || false} />
+          )}
+
+          {currentPage === 'dm' && selectedConversation && (
+            <DMChatView
+              conversation={selectedConversation}
+              currentUserId={session.user.id}
+              otherProfile={conversationOtherProfile}
+              myProfile={profile}
+            />
+          )}
+          {currentPage === 'dm' && !selectedConversation && (
+            <div className="flex-1 flex items-center justify-center bg-gray-100 text-gray-400">
+              Select a conversation or start a new one
+            </div>
           )}
         </div>
 
@@ -546,6 +727,7 @@ function App() {
             handleDeleteMessage={handleDeleteMessage}
             reactionsMap={reactionsMap}
             onToggleReaction={handleToggleReaction}
+            canManageMessages={canManageMessages}
           />
         )}
 

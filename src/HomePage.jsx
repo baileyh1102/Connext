@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
 import ReactionPicker from './ReactionPicker'
+import homeBg from './assets/mascot_stock_image.png'
 
 // Small three-dot menu, top-right of a post, for Edit/Delete — only rendered for the post's own author
 function PostMenu({ onEdit, onDelete }) {
@@ -35,19 +36,18 @@ function PostMenu({ onEdit, onDelete }) {
   )
 }
 
-// HomePage is the server's main feed: an announcements banner at the top
-// (admin-only to post), then a composer for Prayer/Praise posts, then an
-// Instagram-style scrolling feed of everyone's posts with reactions and comments.
-function HomePage({ selectedServer, session, isAdmin }) {
-  const [announcements, setAnnouncements] = useState([])
-  const [newAnnouncement, setNewAnnouncement] = useState('')
-  const [showAnnouncementForm, setShowAnnouncementForm] = useState(false)
-
+// HomePage is the server's main feed: an Instagram-style scrolling feed of
+// everyone's Prayer Request / Praise Report posts, with reactions, comments,
+// and optional anonymous posting. Laid out like CalendarPage — a tall
+// content rectangle over the mascot background, with a "+ Post" button to
+// reveal the composer instead of showing it up front.
+function HomePage({ selectedServer, session }) {
   const [posts, setPosts] = useState([])
   const [postsProfilesMap, setPostsProfilesMap] = useState({})
   const [postContent, setPostContent] = useState('')
   const [postType, setPostType] = useState('prayer') // 'prayer' | 'praise'
   const [isAnonymous, setIsAnonymous] = useState(false)
+  const [showComposer, setShowComposer] = useState(false)
 
   const [editingPostId, setEditingPostId] = useState(null)
   const [editPostValue, setEditPostValue] = useState('')
@@ -57,30 +57,6 @@ function HomePage({ selectedServer, session, isAdmin }) {
   const [commentsMap, setCommentsMap] = useState({}) // { postId: [comment, ...] }
   const [commentInputs, setCommentInputs] = useState({}) // { postId: 'text being typed' }
   const [expandedComments, setExpandedComments] = useState({}) // { postId: true/false }
-
-  // ---- ANNOUNCEMENTS: fetch + realtime ----
-  useEffect(() => {
-    if (!selectedServer) return
-
-    const fetchAnnouncements = async () => {
-      const { data } = await supabase
-        .from('announcements')
-        .select('*')
-        .eq('server_id', selectedServer.id)
-        .order('created_at', { ascending: false })
-      setAnnouncements(data || [])
-    }
-    fetchAnnouncements()
-
-    const channel = supabase
-      .channel(`announcements-${selectedServer.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'announcements', filter: `server_id=eq.${selectedServer.id}` }, () => {
-        fetchAnnouncements()
-      })
-      .subscribe()
-
-    return () => supabase.removeChannel(channel)
-  }, [selectedServer])
 
   // ---- POSTS: fetch + realtime ----
   useEffect(() => {
@@ -209,24 +185,6 @@ function HomePage({ selectedServer, session, isAdmin }) {
     fetchCommentProfiles()
   }, [commentsMap])
 
-  const handleAddAnnouncement = async (e) => {
-    e.preventDefault()
-    if (!newAnnouncement.trim()) return
-    await supabase.from('announcements').insert({
-      server_id: selectedServer.id,
-      user_id: session.user.id,
-      content: newAnnouncement.trim(),
-    })
-    setNewAnnouncement('')
-    setShowAnnouncementForm(false)
-  }
-
-  const handleDeleteAnnouncement = async (id) => {
-    if (window.confirm('Delete this announcement?')) {
-      await supabase.from('announcements').delete().eq('id', id)
-    }
-  }
-
   const handleSubmitPost = async (e) => {
     e.preventDefault()
     if (!postContent.trim()) return
@@ -240,6 +198,7 @@ function HomePage({ selectedServer, session, isAdmin }) {
     if (error) console.log('Post insert error:', error)
     setPostContent('')
     setIsAnonymous(false)
+    setShowComposer(false)
   }
 
   const handleDeletePost = async (id) => {
@@ -320,242 +279,203 @@ function HomePage({ selectedServer, session, isAdmin }) {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto bg-gray-100">
-      {/* ---- ANNOUNCEMENTS BANNER ---- */}
-      <div className="bg-yellow-50 border-b border-yellow-200 p-4">
-        <div className="flex justify-between items-center mb-2">
-          <h2 className="font-semibold text-yellow-800 text-sm">📢 Announcements</h2>
-          {isAdmin && (
-            <button
-              onClick={() => setShowAnnouncementForm(!showAnnouncementForm)}
-              className="text-xs text-yellow-700 hover:underline"
-            >
-              {showAnnouncementForm ? 'Cancel' : '+ New Announcement'}
-            </button>
-          )}
+    <div
+      className="flex-1 overflow-y-auto bg-gray-100 p-6 flex flex-col"
+      style={{ backgroundImage: `url(${homeBg})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+    >
+      <div className="max-w-xl mx-auto w-full flex flex-col flex-1">
+        <div className="flex justify-center items-center mb-4 relative">
+          <h1 className="text-2xl font-bold text-grey-800 drop-shadow-md">Community Wall</h1>
+          <button
+            onClick={() => setShowComposer(!showComposer)}
+            className="absolute right-0 bg-white/90 hover:bg-white text-gray-800 text-sm font-medium px-4 py-1.5 rounded-full shadow"
+          >
+            {showComposer ? 'Cancel' : '+ Post'}
+          </button>
         </div>
 
-        {showAnnouncementForm && (
-          <form onSubmit={handleAddAnnouncement} className="mb-3 flex gap-2">
-            <input
-              type="text"
+        {showComposer && (
+          <form onSubmit={handleSubmitPost} className="bg-white p-4 rounded-lg shadow-sm mb-4">
+            <div className="flex gap-2 mb-2">
+              <button
+                type="button"
+                onClick={() => setPostType('prayer')}
+                className={`px-3 py-1.5 rounded-full text-sm font-medium ${
+                  postType === 'prayer' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                🙏 Prayer Request
+              </button>
+              <button
+                type="button"
+                onClick={() => setPostType('praise')}
+                className={`px-3 py-1.5 rounded-full text-sm font-medium ${
+                  postType === 'praise' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                🙌 Praise
+              </button>
+            </div>
+            <textarea
               autoFocus
-              value={newAnnouncement}
-              onChange={(e) => setNewAnnouncement(e.target.value)}
-              placeholder="Write an announcement..."
-              className="flex-1 border border-yellow-300 rounded p-2 text-sm"
+              value={postContent}
+              onChange={(e) => setPostContent(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  handleSubmitPost(e)
+                }
+              }}
+              placeholder={postType === 'prayer' ? "What's on your heart?" : 'What are you thankful for?'}
+              rows={3}
+              className="w-full border rounded p-2 text-sm resize-none"
             />
-            <button type="submit" className="bg-yellow-600 text-white px-3 py-2 rounded text-sm hover:bg-yellow-700">
-              Post
-            </button>
+            <div className="flex justify-between items-center mt-2">
+              <label className="flex items-center gap-2 text-sm text-gray-500">
+                <input
+                  type="checkbox"
+                  checked={isAnonymous}
+                  onChange={(e) => setIsAnonymous(e.target.checked)}
+                />
+                Post anonymously
+              </label>
+              <button type="submit" className="bg-gray-800 text-white px-4 py-1.5 rounded text-sm hover:bg-gray-900">
+                Post
+              </button>
+            </div>
           </form>
         )}
 
-        {announcements.length === 0 ? (
-          <p className="text-sm text-yellow-700/60">No announcements yet.</p>
-        ) : (
-          <div className="space-y-2">
-            {announcements.map((a) => (
-              <div key={a.id} className="flex justify-between items-start bg-white/60 rounded p-2">
-                <div>
-                  <p className="text-sm text-gray-800">{a.content}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{formatTime(a.created_at)}</p>
-                </div>
-                {isAdmin && (
-                  <button
-                    onClick={() => handleDeleteAnnouncement(a.id)}
-                    className="text-xs text-red-400 hover:text-red-600 ml-2"
-                  >
-                    Delete
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+        {/* ---- FEED ---- */}
+        <div className="border border-gray-200 bg-gray-50 px-4 py-4 space-y-4 flex-1 rounded-lg">
+          {posts.length === 0 && (
+            <p className="text-center text-gray-400 text-sm py-12">No posts yet — be the first to share.</p>
+          )}
+          {posts.map((post) => {
+            const authorProfile = postsProfilesMap[post.user_id]
+            const isOwnPost = post.user_id === session.user.id
+            const displayName = post.is_anonymous ? 'Someone' : (authorProfile?.display_name || 'A member')
+            const actionLabel = post.type === 'prayer' ? 'Prayer Request' : 'Praise'
+            const isEditing = editingPostId === post.id
+            const groupedReactions = getGroupedReactions(post.id)
+            const comments = commentsMap[post.id] || []
+            const areCommentsOpen = expandedComments[post.id]
 
-      {/* ---- POST COMPOSER ---- */}
-      <div className="bg-white border-b p-4">
-        <form onSubmit={handleSubmitPost}>
-          <div className="flex gap-2 mb-2">
-            <button
-              type="button"
-              onClick={() => setPostType('prayer')}
-              className={`px-3 py-1.5 rounded-full text-sm font-medium ${
-                postType === 'prayer' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'
-              }`}
-            >
-              🙏 Prayer Request
-            </button>
-            <button
-              type="button"
-              onClick={() => setPostType('praise')}
-              className={`px-3 py-1.5 rounded-full text-sm font-medium ${
-                postType === 'praise' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600'
-              }`}
-            >
-              🙌 Praise
-            </button>
-          </div>
-          <textarea
-            value={postContent}
-            onChange={(e) => setPostContent(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                handleSubmitPost(e)
-              }
-            }}
-            placeholder={postType === 'prayer' ? "What's on your heart?" : 'What are you thankful for?'}
-            rows={3}
-            className="w-full border rounded p-2 text-sm resize-none"
-          />
-          <div className="flex justify-between items-center mt-2">
-            <label className="flex items-center gap-2 text-sm text-gray-500">
-              <input
-                type="checkbox"
-                checked={isAnonymous}
-                onChange={(e) => setIsAnonymous(e.target.checked)}
-              />
-              Post anonymously
-            </label>
-            <button type="submit" className="bg-gray-800 text-white px-4 py-1.5 rounded text-sm hover:bg-gray-900">
-              Post
-            </button>
-          </div>
-        </form>
-      </div>
+            return (
+              <div key={post.id} className="bg-white rounded-lg shadow-sm overflow-hidden">
+                <div className="flex items-start gap-3 p-4">
+                  {/* Big emoji badge, top-left */}
+                  <div className="text-3xl shrink-0">
+                    {post.type === 'prayer' ? '🙏' : '🙌'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-start">
+                      <p className="text-sm">
+                        <span className="font-semibold">{displayName}</span>
+                        <span className="text-gray-500"> posted a {actionLabel}</span>
+                      </p>
+                      {isOwnPost && !isEditing && (
+                        <PostMenu
+                          onEdit={() => startEditingPost(post)}
+                          onDelete={() => handleDeletePost(post.id)}
+                        />
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-400">{formatTime(post.created_at)}</p>
 
-      {/* ---- FEED ---- */}
-      <div className="max-w-xl mx-auto py-4 space-y-4">
-        {posts.length === 0 && (
-          <p className="text-center text-gray-400 text-sm">No posts yet — be the first to share.</p>
-        )}
-        {posts.map((post) => {
-          const authorProfile = postsProfilesMap[post.user_id]
-          const isOwnPost = post.user_id === session.user.id
-          const displayName = post.is_anonymous ? 'Someone' : (authorProfile?.display_name || 'A member')
-          const actionLabel = post.type === 'prayer' ? 'Prayer Request' : 'Praise'
-          const isEditing = editingPostId === post.id
-          const groupedReactions = getGroupedReactions(post.id)
-          const comments = commentsMap[post.id] || []
-          const areCommentsOpen = expandedComments[post.id]
+                    {isEditing ? (
+                      <div className="mt-2">
+                        <textarea
+                          autoFocus
+                          value={editPostValue}
+                          onChange={(e) => setEditPostValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault()
+                              submitEditPost(post.id)
+                            }
+                            if (e.key === 'Escape') setEditingPostId(null)
+                          }}
+                          rows={3}
+                          className="w-full border rounded p-2 text-sm resize-none"
+                        />
+                        <div className="text-xs text-gray-400 mt-1">Enter to save, Shift+Enter for a new line, Esc to cancel</div>
+                      </div>
+                    ) : (
+                      <p className="mt-2 whitespace-pre-wrap">{post.content}</p>
+                    )}
 
-          return (
-            <div key={post.id} className="bg-white rounded-lg shadow-sm mx-4 overflow-hidden">
-              <div className="flex items-start gap-3 p-4">
-                {/* Big emoji badge, top-left */}
-                <div className="text-3xl shrink-0">
-                  {post.type === 'prayer' ? '🙏' : '🙌'}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-start">
-                    <p className="text-sm">
-                      <span className="font-semibold">{displayName}</span>
-                      <span className="text-gray-500"> posted a {actionLabel}</span>
-                    </p>
-                    {isOwnPost && !isEditing && (
-                      <PostMenu
-                        onEdit={() => startEditingPost(post)}
-                        onDelete={() => handleDeletePost(post.id)}
-                      />
+                    {/* ---- REACTIONS ---- */}
+                    <div className="flex flex-wrap items-center gap-1 mt-3">
+                      {Object.entries(groupedReactions).map(([emoji, { count, reactedByMe }]) => (
+                        <button
+                          key={emoji}
+                          onClick={() => handleTogglePostReaction(post.id, emoji)}
+                          className={`text-xs px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                            reactedByMe
+                              ? 'bg-blue-100 border-blue-400 text-blue-700'
+                              : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                          }`}
+                        >
+                          <span>{emoji}</span>
+                          <span>{count}</span>
+                        </button>
+                      ))}
+                      <ReactionPicker onSelect={(emoji) => handleTogglePostReaction(post.id, emoji)} />
+                      <button
+                        onClick={() => setExpandedComments((current) => ({ ...current, [post.id]: !current[post.id] }))}
+                        className="text-xs text-gray-400 hover:text-gray-600 ml-1"
+                      >
+                        {comments.length > 0 ? `${comments.length} comment${comments.length === 1 ? '' : 's'}` : 'Comment'}
+                      </button>
+                    </div>
+
+                    {/* ---- COMMENTS ---- */}
+                    {areCommentsOpen && (
+                      <div className="mt-3 pt-3 border-t space-y-2">
+                        {comments.map((c) => {
+                          const commentProfile = postsProfilesMap[c.user_id]
+                          const isOwnComment = c.user_id === session.user.id
+                          return (
+                            <div key={c.id} className="flex justify-between items-start text-sm">
+                              <p>
+                                <span className="font-semibold">{commentProfile?.display_name || 'A member'}</span>{' '}
+                                <span className="text-gray-700">{c.content}</span>
+                              </p>
+                              {isOwnComment && (
+                                <button
+                                  onClick={() => handleDeleteComment(c.id)}
+                                  className="text-xs text-red-400 hover:text-red-600 ml-2 shrink-0"
+                                >
+                                  Delete
+                                </button>
+                              )}
+                            </div>
+                          )
+                        })}
+                        <form
+                          onSubmit={(e) => { e.preventDefault(); handleAddComment(post.id) }}
+                          className="flex gap-2 pt-1"
+                        >
+                          <input
+                            type="text"
+                            value={commentInputs[post.id] || ''}
+                            onChange={(e) => setCommentInputs((current) => ({ ...current, [post.id]: e.target.value }))}
+                            placeholder="Write a comment..."
+                            className="flex-1 border rounded p-1.5 text-sm"
+                          />
+                          <button type="submit" className="text-sm text-blue-600 hover:underline">
+                            Post
+                          </button>
+                        </form>
+                      </div>
                     )}
                   </div>
-                  <p className="text-xs text-gray-400">{formatTime(post.created_at)}</p>
-
-                  {isEditing ? (
-                    <div className="mt-2">
-                      <textarea
-                        autoFocus
-                        value={editPostValue}
-                        onChange={(e) => setEditPostValue(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault()
-                            submitEditPost(post.id)
-                          }
-                          if (e.key === 'Escape') setEditingPostId(null)
-                        }}
-                        rows={3}
-                        className="w-full border rounded p-2 text-sm resize-none"
-                      />
-                      <div className="text-xs text-gray-400 mt-1">Enter to save, Shift+Enter for a new line, Esc to cancel</div>
-                    </div>
-                  ) : (
-                    <p className="mt-2 whitespace-pre-wrap">{post.content}</p>
-                  )}
-
-                  {/* ---- REACTIONS ---- */}
-                  <div className="flex flex-wrap items-center gap-1 mt-3">
-                    {Object.entries(groupedReactions).map(([emoji, { count, reactedByMe }]) => (
-                      <button
-                        key={emoji}
-                        onClick={() => handleTogglePostReaction(post.id, emoji)}
-                        className={`text-xs px-2 py-0.5 rounded-full border flex items-center gap-1 ${
-                          reactedByMe
-                            ? 'bg-blue-100 border-blue-400 text-blue-700'
-                            : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
-                        }`}
-                      >
-                        <span>{emoji}</span>
-                        <span>{count}</span>
-                      </button>
-                    ))}
-                    <ReactionPicker onSelect={(emoji) => handleTogglePostReaction(post.id, emoji)} />
-                    <button
-                      onClick={() => setExpandedComments((current) => ({ ...current, [post.id]: !current[post.id] }))}
-                      className="text-xs text-gray-400 hover:text-gray-600 ml-1"
-                    >
-                      {comments.length > 0 ? `${comments.length} comment${comments.length === 1 ? '' : 's'}` : 'Comment'}
-                    </button>
-                  </div>
-
-                  {/* ---- COMMENTS ---- */}
-                  {areCommentsOpen && (
-                    <div className="mt-3 pt-3 border-t space-y-2">
-                      {comments.map((c) => {
-                        const commentProfile = postsProfilesMap[c.user_id]
-                        const isOwnComment = c.user_id === session.user.id
-                        return (
-                          <div key={c.id} className="flex justify-between items-start text-sm">
-                            <p>
-                              <span className="font-semibold">{commentProfile?.display_name || 'A member'}</span>{' '}
-                              <span className="text-gray-700">{c.content}</span>
-                            </p>
-                            {isOwnComment && (
-                              <button
-                                onClick={() => handleDeleteComment(c.id)}
-                                className="text-xs text-red-400 hover:text-red-600 ml-2 shrink-0"
-                              >
-                                Delete
-                              </button>
-                            )}
-                          </div>
-                        )
-                      })}
-                      <form
-                        onSubmit={(e) => { e.preventDefault(); handleAddComment(post.id) }}
-                        className="flex gap-2 pt-1"
-                      >
-                        <input
-                          type="text"
-                          value={commentInputs[post.id] || ''}
-                          onChange={(e) => setCommentInputs((current) => ({ ...current, [post.id]: e.target.value }))}
-                          placeholder="Write a comment..."
-                          className="flex-1 border rounded p-1.5 text-sm"
-                        />
-                        <button type="submit" className="text-sm text-blue-600 hover:underline">
-                          Post
-                        </button>
-                      </form>
-                    </div>
-                  )}
                 </div>
               </div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </div>
     </div>
   )

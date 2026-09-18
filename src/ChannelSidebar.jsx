@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
 import {
   DndContext,
@@ -16,26 +16,10 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import ChannelSettings from './ChannelSettings'
 
-// A single draggable, clickable channel row with a three-dot settings menu
-function ChannelItem({ ch, isSelected, onSelect, onOpenSettings }) {
-  const [showMenu, setShowMenu] = useState(false)
-
-  const menuRef = useRef(null)
-
-  // Closes the menu whenever a click happens anywhere outside of it
-  useEffect(() => {
-    if (!showMenu) return
-
-    const handleClickOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setShowMenu(false)
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [showMenu])
-
+// A single draggable, clickable channel row. Right-click or the three-dot
+// button (only shown to those with can_manage_channels) opens the full
+// ChannelSettings modal directly — no intermediate dropdown.
+function ChannelItem({ ch, isSelected, onSelect, onOpenSettings, canManageChannels }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: ch.id })
 
   const style = {
@@ -43,7 +27,6 @@ function ChannelItem({ ch, isSelected, onSelect, onOpenSettings }) {
     transition,
     opacity: isDragging ? 0.5 : 1,
   }
-
 
   return (
     <div
@@ -54,7 +37,7 @@ function ChannelItem({ ch, isSelected, onSelect, onOpenSettings }) {
       onClick={onSelect}
       onContextMenu={(e) => {
         e.preventDefault()
-        setShowMenu(true)
+        if (canManageChannels) onOpenSettings(ch)
       }}
       className={`group relative flex items-center justify-between px-3 py-2 rounded cursor-pointer text-sm ${
         isSelected ? 'bg-gray-700 text-white' : 'hover:bg-gray-700'
@@ -62,36 +45,21 @@ function ChannelItem({ ch, isSelected, onSelect, onOpenSettings }) {
     >
       <span># {ch.name}</span>
 
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          setShowMenu(!showMenu)
-        }}
-        className={`text-gray-400 hover:text-white px-1 ${showMenu ? '' : 'opacity-0 group-hover:opacity-100'}`}
-      >
-        ⋮
-      </button>
-
-      {showMenu && (
-        <div
-          ref={menuRef}
-          onClick={(e) => e.stopPropagation()}
-          className="absolute right-0 top-8 bg-gray-900 border border-gray-700 rounded shadow-lg z-10 w-40"
+      {canManageChannels && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onOpenSettings(ch)
+          }}
+          className="text-gray-400 hover:text-white px-1 opacity-0 group-hover:opacity-100"
         >
-          <button
-            onClick={() => { onOpenSettings(ch); setShowMenu(false) }}
-            className="w-full text-left px-3 py-2 text-sm text-gray-200 hover:bg-gray-800"
-          >
-            Channel Settings
-          </button>
-        </div>
+          ⋮
+        </button>
       )}
     </div>
   )
 }
 
-// The hamburger menu next to the server name — the "menu hub" for
-// server-level actions: rename and delete, with room for more later.
 // The hamburger button next to the server name — opens the full ServerSettings modal
 function ServerMenu({ onOpenSettings }) {
   return (
@@ -110,21 +78,57 @@ function ServerMenu({ onOpenSettings }) {
 }
 
 // ChannelSidebar fetches real channels for the SELECTED SERVER, supports
-// selecting, creating, renaming, deleting, and drag-and-drop reordering.
-// The header also holds the hamburger menu for server-level actions.
-function ChannelSidebar({ selectedChannel, setSelectedChannel, selectedServer, onOpenServerSettings }) {
+// selecting, creating, drag-and-drop reordering, and opening ChannelSettings
+// (rename/description/delete/permissions) for members with can_manage_channels.
+function ChannelSidebar({ selectedChannel, setSelectedChannel, selectedServer, onOpenServerSettings, currentUserId }) {
   const [channels, setChannels] = useState([])
   const [newChannelName, setNewChannelName] = useState('')
   const [showAddForm, setShowAddForm] = useState(false)
+  const [canManageChannels, setCanManageChannels] = useState(false)
+  const [hasServerSettingsAccess, setHasServerSettingsAccess] = useState(false)
+  const [editingChannel, setEditingChannel] = useState(null) // the channel currently open in ChannelSettings
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
-  // Always holds the CURRENT selectedChannel, so the realtime callback below
-  // (created once per effect run) doesn't act on a stale/outdated value
-  const selectedChannelRef = useRef(selectedChannel)
+  // Determine what the viewer is allowed to do here:
+  // - canManageChannels gates the channel management UI (unchanged)
+  // - hasServerSettingsAccess gates whether the Server Settings hamburger even
+  //   appears at all — only shown to the creator or someone with at least ONE
+  //   server-level permission (manage server, manage roles, or kick members)
   useEffect(() => {
-    selectedChannelRef.current = selectedChannel
-  }, [selectedChannel])
+    if (!selectedServer) return
+
+    const checkPermission = async () => {
+      if (selectedServer.created_by === currentUserId) {
+        setCanManageChannels(true)
+        setHasServerSettingsAccess(true)
+        return
+      }
+      const { data: memberRow } = await supabase
+        .from('server_members')
+        .select('role_id')
+        .eq('server_id', selectedServer.id)
+        .eq('user_id', currentUserId)
+        .single()
+
+      if (memberRow?.role_id) {
+        const { data: roleRow } = await supabase
+          .from('roles')
+          .select('can_manage_channels, can_manage_server, can_manage_roles, can_kick_members')
+          .eq('id', memberRow.role_id)
+          .single()
+
+        setCanManageChannels(!!roleRow?.can_manage_channels)
+        setHasServerSettingsAccess(
+          !!roleRow?.can_manage_server || !!roleRow?.can_manage_roles || !!roleRow?.can_kick_members
+        )
+      } else {
+        setCanManageChannels(false)
+        setHasServerSettingsAccess(false)
+      }
+    }
+    checkPermission()
+  }, [selectedServer, currentUserId])
 
   useEffect(() => {
     if (!selectedServer) return
@@ -138,10 +142,7 @@ function ChannelSidebar({ selectedChannel, setSelectedChannel, selectedServer, o
       setChannels(data || [])
 
       if (data && data.length > 0) {
-        // Keep whatever channel was already selected (e.g. returning from another
-        // page) as long as it still belongs to this server. Only fall back to the
-        // first channel if there's no valid current selection.
-        const currentIsStillValid = data.some((c) => c.id === selectedChannelRef.current?.id)
+        const currentIsStillValid = data.some((c) => c.id === selectedChannel?.id)
         if (!currentIsStillValid) {
           setSelectedChannel(data[0])
         }
@@ -178,8 +179,6 @@ function ChannelSidebar({ selectedChannel, setSelectedChannel, selectedServer, o
     setShowAddForm(false)
   }
 
-  const [editingChannel, setEditingChannel] = useState(null) // the channel currently open in ChannelSettings
-
   const handleChannelDeleted = async (channelId) => {
     await supabase.from('messages').delete().eq('channel_id', channelId)
     await supabase.from('channels').delete().eq('id', channelId)
@@ -214,10 +213,10 @@ function ChannelSidebar({ selectedChannel, setSelectedChannel, selectedServer, o
   }
 
   return (
-    <div className="w-56 bg-gray-800 text-gray-300 flex flex-col">
+    <div className="w-56 h-full bg-gray-800 text-gray-300 flex flex-col">
       <div className="p-4 font-bold text-white border-b border-gray-700 flex items-center justify-between">
         <span className="truncate">{selectedServer?.name || 'Connext'}</span>
-        {selectedServer && <ServerMenu onOpenSettings={onOpenServerSettings} />}
+        {selectedServer && hasServerSettingsAccess && <ServerMenu onOpenSettings={onOpenServerSettings} />}
       </div>
       <div className="flex-1 overflow-y-auto p-2">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -229,12 +228,13 @@ function ChannelSidebar({ selectedChannel, setSelectedChannel, selectedServer, o
                 isSelected={selectedChannel?.id === ch.id}
                 onSelect={() => setSelectedChannel(ch)}
                 onOpenSettings={setEditingChannel}
+                canManageChannels={canManageChannels}
               />
             ))}
           </SortableContext>
         </DndContext>
 
-        {showAddForm ? (
+        {canManageChannels && (showAddForm ? (
           <form onSubmit={handleAddChannel} className="mt-2 px-1">
             <input
               type="text"
@@ -253,7 +253,7 @@ function ChannelSidebar({ selectedChannel, setSelectedChannel, selectedServer, o
           >
             + Add Channel
           </button>
-        )}
+        ))}
       </div>
 
       {editingChannel && (

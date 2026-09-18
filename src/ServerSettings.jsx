@@ -5,6 +5,7 @@ const TABS = [
   { id: 'general', label: 'General' },
   { id: 'members', label: 'Members' },
   { id: 'roles', label: 'Roles' },
+  { id: 'invites', label: 'Invites' },
 ]
 
 const PERMISSIONS = [
@@ -76,7 +77,11 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServ
   const [roleName, setRoleName] = useState('')
   const [rolePerms, setRolePerms] = useState(DEFAULT_ROLE_PERMS)
   const filteredRoles = roles.filter((r) => r.name.toLowerCase().includes(roleSearch.toLowerCase()))
-
+  
+  
+  // ---- INVITES TAB STATE ----
+  const [invites, setInvites] = useState([])
+  const [newInviteRoleId, setNewInviteRoleId] = useState('') // '' = no role / public
   // Look up the viewer's own role in this server (skip entirely if they're the creator — creator already has everything)
   useEffect(() => {
     if (isCreator) return
@@ -146,6 +151,59 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServ
     }
     fetchRoles()
   }, [activeTab, server.id])
+
+  
+  // Load invites whenever the Invites tab is opened (also ensures `roles` is populated for the create-invite dropdown)
+  useEffect(() => {
+    if (activeTab !== 'invites') return
+
+    const fetchInvites = async () => {
+      const { data: roleRows } = await supabase.from('roles').select('*').eq('server_id', server.id)
+      setRoles(roleRows || [])
+
+      const { data } = await supabase
+        .from('invites')
+        .select('*')
+        .eq('server_id', server.id)
+        .order('created_at', { ascending: false })
+      setInvites(data || [])
+    }
+    fetchInvites()
+  }, [activeTab, server.id])
+
+  const generateInviteCode = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // no O/0 or I/1, avoids confusion
+    let code = ''
+    for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)]
+    return code
+  }
+
+  const handleCreateInvite = async () => {
+    const { data, error } = await supabase
+      .from('invites')
+      .insert({
+        server_id: server.id,
+        code: generateInviteCode(),
+        role_id: newInviteRoleId || null,
+        created_by: currentUserId,
+      })
+      .select()
+      .single()
+
+    if (!error && data) {
+      setInvites((current) => [data, ...current])
+      setNewInviteRoleId('')
+    }
+  }
+
+  const handleToggleInviteActive = async (invite) => {
+    await supabase.from('invites').update({ active: !invite.active }).eq('id', invite.id)
+    setInvites((current) => current.map((i) => (i.id === invite.id ? { ...i, active: !i.active } : i)))
+  }
+
+  const copyInviteCode = (code) => {
+    navigator.clipboard.writeText(code)
+  }
 
   const handleSaveGeneral = async (e) => {
     e.preventDefault()
@@ -544,6 +602,60 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServ
                   </button>
                 </div>
               </form>
+            )}
+
+            {/* ---- INVITES TAB ---- */}
+            {activeTab === 'invites' && (
+              <div>
+                {canManageServer ? (
+                  <div className="mb-6 bg-gray-50 p-4 rounded-lg">
+                    <label className="block text-sm font-medium mb-1">Role assigned to new members</label>
+                    <select
+                      value={newInviteRoleId}
+                      onChange={(e) => setNewInviteRoleId(e.target.value)}
+                      className="w-full p-2 mb-3 border rounded text-sm"
+                    >
+                      <option value="">Public — no role (default permissions)</option>
+                      {roles.map((r) => (
+                        <option key={r.id} value={r.id}>{r.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handleCreateInvite}
+                      className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700"
+                    >
+                      Generate Invite Code
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400 mb-4">You don't have permission to manage invites.</p>
+                )}
+
+                <div className="space-y-2">
+                  {invites.length === 0 && <p className="text-sm text-gray-400">No invite codes yet.</p>}
+                  {invites.map((invite) => (
+                    <div key={invite.id} className={`flex justify-between items-center p-2 rounded ${invite.active ? 'hover:bg-gray-50' : 'opacity-50'}`}>
+                      <div>
+                        <p className="text-sm font-mono font-medium">{invite.code}</p>
+                        <p className="text-xs text-gray-400">
+                          {roles.find((r) => r.id === invite.role_id)?.name || 'Public — no role'}
+                          {!invite.active && ' · Revoked'}
+                        </p>
+                      </div>
+                      {canManageServer && (
+                        <div className="flex gap-3">
+                          <button onClick={() => copyInviteCode(invite.code)} className="text-xs text-blue-600 hover:underline">
+                            Copy
+                          </button>
+                          <button onClick={() => handleToggleInviteActive(invite)} className="text-xs text-gray-500 hover:text-gray-700">
+                            {invite.active ? 'Revoke' : 'Reactivate'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         </div>
