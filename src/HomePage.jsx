@@ -284,11 +284,11 @@ function HomePage({ selectedServer, session }) {
       style={{ backgroundImage: `url(${homeBg})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
     >
       <div className="max-w-xl mx-auto w-full flex flex-col flex-1">
-        <div className="flex justify-center items-center mb-4 relative">
-          <h1 className="text-2xl font-bold text-grey-800 drop-shadow-md">Community Wall</h1>
+        <div className="flex flex-col items-center gap-3 mb-4">
+          <h1 className="text-2xl font-bold text-gray-800 drop-shadow-md">Community Wall</h1>
           <button
             onClick={() => setShowComposer(!showComposer)}
-            className="absolute right-0 bg-white/90 hover:bg-white text-gray-800 text-sm font-medium px-4 py-1.5 rounded-full shadow"
+            className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-1.5 rounded-full shadow"
           >
             {showComposer ? 'Cancel' : '+ Post'}
           </button>
@@ -339,7 +339,7 @@ function HomePage({ selectedServer, session }) {
                 />
                 Post anonymously
               </label>
-              <button type="submit" className="bg-gray-800 text-white px-4 py-1.5 rounded text-sm hover:bg-gray-900">
+              <button type="submit" className="bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700">
                 Post
               </button>
             </div>

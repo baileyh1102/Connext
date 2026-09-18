@@ -4,7 +4,7 @@
 // which page is active.
 const PAGES = [
   { id: 'chat', label: 'Chat' },
-  { id: 'home', label: 'Home' },
+  { id: 'home', label: 'Community' },
   { id: 'calendar', label: 'Calendar' },
 ]
 

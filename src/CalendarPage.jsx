@@ -1,21 +1,21 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabaseClient'
 import calendarWordmark from './assets/calendar_wordmark.png'
 import calendarBg from './assets/mascot_stock_image.png'
 
 // CalendarPage lets an admin connect a Google Calendar (via its secret iCal
-// link) and shows the resulting events. The actual custom calendar GRID
-// rendering comes in a follow-up pass — this version confirms the pipeline
-// (link storage -> Edge Function -> parsed events) works end to end.
+// link) and shows the resulting events, sorted soonest-first.
 function CalendarPage({ selectedServer, isAdmin }) {
   const [isConnected, setIsConnected] = useState(null) // null = not checked yet
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
   const [icalInput, setIcalInput] = useState('')
-  const [showConnectForm, setShowConnectForm] = useState(false)
+  const [showMenu, setShowMenu] = useState(false)
   const [error, setError] = useState('')
+  const [selectedEvent, setSelectedEvent] = useState(null)
+  const [connectedUrlPreview, setConnectedUrlPreview] = useState('') // masked preview shown to admins once connected
 
-  const [selectedEvent, setSelectedEvent] = useState(null) // event currently open in the detail modal
+  const menuRef = useRef(null)
 
   const fetchEvents = async () => {
     if (!selectedServer) return
@@ -42,6 +42,40 @@ function CalendarPage({ selectedServer, isAdmin }) {
     fetchEvents()
   }, [selectedServer])
 
+  // Once we know a calendar is connected, admins (who have RLS read access)
+  // fetch the actual link so we can show a masked preview — never shown to non-admins.
+  useEffect(() => {
+    if (!isAdmin || !isConnected || !selectedServer) {
+      setConnectedUrlPreview('')
+      return
+    }
+    const fetchLinkPreview = async () => {
+      const { data } = await supabase
+        .from('server_calendars')
+        .select('ical_url')
+        .eq('server_id', selectedServer.id)
+        .single()
+
+      if (data?.ical_url) {
+        const tail = data.ical_url.slice(-16)
+        setConnectedUrlPreview(`${'•'.repeat(20)}${tail}`)
+      }
+    }
+    fetchLinkPreview()
+  }, [isAdmin, isConnected, selectedServer])
+
+  // Close the hamburger menu on outside click
+  useEffect(() => {
+    if (!showMenu) return
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setShowMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showMenu])
+
   const handleConnect = async (e) => {
     e.preventDefault()
     if (!icalInput.trim()) return
@@ -56,8 +90,8 @@ function CalendarPage({ selectedServer, isAdmin }) {
     }
 
     setIcalInput('')
-    setShowConnectForm(false)
-    fetchEvents() // pull events right away using the newly connected calendar
+    setShowMenu(false)
+    fetchEvents()
   }
 
   const formatEventDate = (dateStr) => {
@@ -77,37 +111,50 @@ function CalendarPage({ selectedServer, isAdmin }) {
     >
       <div className="max-w-2xl mx-auto w-full flex flex-col flex-1">
         <div className="flex justify-center items-center mb-4 relative">
-          <img src={calendarWordmark} alt="Calendar" className="h-12" />
+          <img src={calendarWordmark} alt="Calendar" className="h-10" />
+
           {isAdmin && (
-            <button
-              onClick={() => setShowConnectForm(!showConnectForm)}
-              className="absolute right-0 text-sm text-blue-600 hover:underline"
-            >
-              {isConnected ? 'Update Calendar Link' : 'Connect Calendar'}
-            </button>
+            <div className="absolute right-0" ref={menuRef}>
+              <button
+                onClick={() => setShowMenu(!showMenu)}
+                className="text-gray-500 hover:text-gray-700 p-1"
+                aria-label="Calendar settings"
+              >
+                <div className="flex flex-col gap-[3px]">
+                  <span className="block w-4 h-0.5 bg-current"></span>
+                  <span className="block w-4 h-0.5 bg-current"></span>
+                  <span className="block w-4 h-0.5 bg-current"></span>
+                </div>
+              </button>
+
+              {showMenu && (
+                <div className="absolute right-0 top-8 bg-white border rounded-lg shadow-lg w-72 p-4 z-20">
+                  <p className="text-sm font-semibold mb-1">
+                    {isConnected ? 'Update Calendar Link' : 'Connect Calendar'}
+                  </p>
+                  {isConnected && connectedUrlPreview && (
+                    <p className="text-xs text-gray-400 mb-2 font-mono break-all">{connectedUrlPreview}</p>
+                  )}
+                  <p className="text-xs text-gray-400 mb-2">
+                    Google Calendar → Settings and sharing → Integrate calendar → "Secret address in iCal format"
+                  </p>
+                  <form onSubmit={handleConnect} className="flex flex-col gap-2">
+                    <input
+                      type="text"
+                      value={icalInput}
+                      onChange={(e) => setIcalInput(e.target.value)}
+                      placeholder={isConnected ? 'Paste new link to replace' : 'https://calendar.google.com/.../basic.ics'}
+                      className="border rounded p-2 text-sm"
+                    />
+                    <button type="submit" className="bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700">
+                      Save
+                    </button>
+                  </form>
+                </div>
+              )}
+            </div>
           )}
         </div>
-
-        {showConnectForm && (
-          <form onSubmit={handleConnect} className="bg-white p-4 rounded-lg shadow-sm mb-4">
-            <label className="block text-sm font-medium mb-1">Google Calendar secret iCal address</label>
-            <p className="text-xs text-gray-400 mb-2">
-              Google Calendar → Settings and sharing → your calendar → Integrate calendar → "Secret address in iCal format"
-            </p>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={icalInput}
-                onChange={(e) => setIcalInput(e.target.value)}
-                placeholder="https://calendar.google.com/calendar/ical/.../basic.ics"
-                className="flex-1 border rounded p-2 text-sm"
-              />
-              <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
-                Save
-              </button>
-            </div>
-          </form>
-        )}
 
         {error && <p className="text-sm text-red-500 mb-4">{error}</p>}
 
@@ -116,12 +163,13 @@ function CalendarPage({ selectedServer, isAdmin }) {
         ) : isConnected === false ? (
           <div className="text-center text-gray-400 py-12">
             <p className="text-lg font-medium">No calendar connected yet</p>
-            {isAdmin && <p className="text-sm mt-1">Click "Connect Calendar" above to get started.</p>}
+            {isAdmin && <p className="text-sm mt-1">Click the menu above to get started.</p>}
           </div>
-        ) : events.length === 0 ? (
-          <p className="text-center text-gray-400 py-12">No upcoming events.</p>
         ) : (
           <div className="border border-gray-200 bg-gray-50 px-4 py-4 space-y-2 flex-1 rounded-lg">
+            {events.length === 0 && (
+              <p className="text-center text-gray-400 py-12">No upcoming events.</p>
+            )}
             {events.map((event, index) => (
               <button
                 key={index}
