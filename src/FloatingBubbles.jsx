@@ -57,10 +57,33 @@ function FloatingBubbles({ selectedServer, currentUserId, currentUserName }) {
 
     const bounds = container.getBoundingClientRect()
 
+    const takenSpots = [] // landing spots already claimed, so we can space new ones apart from them
+
     physicsRef.current = members.map((m) => {
       const diameter = m.size
-      const landingX = Math.random() * (bounds.width - diameter)
-      const landingY = Math.random() * (bounds.height - diameter)
+
+      // Try a handful of random landing spots and keep the first one that's not
+      // too close to an already-claimed spot — this means bubbles arrive already
+      // spread out, instead of needing a sudden correction once they land.
+      let landingX, landingY
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const candidateX = Math.random() * (bounds.width - diameter)
+        const candidateY = Math.random() * (bounds.height - diameter)
+        const tooClose = takenSpots.some((spot) => {
+          const dx = candidateX - spot.x
+          const dy = candidateY - spot.y
+          return Math.sqrt(dx * dx + dy * dy) < (diameter / 2 + spot.radius + 10)
+        })
+        if (!tooClose) {
+          landingX = candidateX
+          landingY = candidateY
+          break
+        }
+        // Last attempt: just accept whatever we've got rather than looping forever
+        landingX = candidateX
+        landingY = candidateY
+      }
+      takenSpots.push({ x: landingX, y: landingY, radius: diameter / 2 })
 
       const edge = Math.floor(Math.random() * 4)
       let startX, startY
@@ -121,8 +144,6 @@ function FloatingBubbles({ selectedServer, currentUserId, currentUserName }) {
 
         for (let i = 0; i < bodies.length; i++) {
           for (let j = i + 1; j < bodies.length; j++) {
-            if (!bodies[i].entered || !bodies[j].entered) continue
-
             const a = bodies[i]
             const b = bodies[j]
             const dx = (b.x + b.radius) - (a.x + a.radius)
@@ -131,13 +152,20 @@ function FloatingBubbles({ selectedServer, currentUserId, currentUserName }) {
             const minDist = a.radius + b.radius
 
             if (dist < minDist && dist > 0) {
-              const overlap = (minDist - dist) / 2
               const nx = dx / dist
               const ny = dy / dist
-              a.x -= nx * overlap
-              a.y -= ny * overlap
-              b.x += nx * overlap
-              b.y += ny * overlap
+
+              // GENTLE, gradual separation: only nudge apart by a small fraction of
+              // the overlap each frame, rather than fully resolving it in one frame.
+              // Over several frames this smoothly drifts them apart instead of
+              // snapping — and since it runs every frame, they settle into a
+              // stable non-overlapping distance and stay there.
+              const overlap = minDist - dist
+              const nudge = overlap * 0.08
+              a.x -= nx * nudge
+              a.y -= ny * nudge
+              b.x += nx * nudge
+              b.y += ny * nudge
 
               const avn = a.vx * nx + a.vy * ny
               const bvn = b.vx * nx + b.vy * ny
