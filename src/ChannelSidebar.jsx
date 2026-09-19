@@ -78,54 +78,34 @@ function ServerMenu({ onOpenSettings }) {
 }
 
 // ChannelSidebar fetches real channels for the SELECTED SERVER, supports
-// selecting, creating, drag-and-drop reordering, and opening ChannelSettings
+// selecting and drag-and-drop reordering, and opening ChannelSettings
 // (rename/description/delete/permissions) for members with can_manage_channels.
+// Channel CREATION now lives in Server Settings' Channels tab, not here.
 function ChannelSidebar({ selectedChannel, setSelectedChannel, selectedServer, onOpenServerSettings, currentUserId }) {
   const [channels, setChannels] = useState([])
-  const [newChannelName, setNewChannelName] = useState('')
-  const [showAddForm, setShowAddForm] = useState(false)
   const [canManageChannels, setCanManageChannels] = useState(false)
-  const [hasServerSettingsAccess, setHasServerSettingsAccess] = useState(false)
   const [editingChannel, setEditingChannel] = useState(null) // the channel currently open in ChannelSettings
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
-  // Determine what the viewer is allowed to do here:
-  // - canManageChannels gates the channel management UI (unchanged)
-  // - hasServerSettingsAccess gates whether the Server Settings hamburger even
-  //   appears at all — only shown to the creator or someone with at least ONE
-  //   server-level permission (manage server, manage roles, or kick members)
+  // Determine whether the viewer can create/edit/delete channels here:
+  // true if they're the server's creator, or their assigned role has can_manage_channels
   useEffect(() => {
     if (!selectedServer) return
 
     const checkPermission = async () => {
       if (selectedServer.created_by === currentUserId) {
         setCanManageChannels(true)
-        setHasServerSettingsAccess(true)
         return
       }
       const { data: memberRow } = await supabase
         .from('server_members')
-        .select('role_id')
+        .select('can_manage_channels')
         .eq('server_id', selectedServer.id)
         .eq('user_id', currentUserId)
         .single()
 
-      if (memberRow?.role_id) {
-        const { data: roleRow } = await supabase
-          .from('roles')
-          .select('can_manage_channels, can_manage_server, can_manage_roles, can_kick_members')
-          .eq('id', memberRow.role_id)
-          .single()
-
-        setCanManageChannels(!!roleRow?.can_manage_channels)
-        setHasServerSettingsAccess(
-          !!roleRow?.can_manage_server || !!roleRow?.can_manage_roles || !!roleRow?.can_kick_members
-        )
-      } else {
-        setCanManageChannels(false)
-        setHasServerSettingsAccess(false)
-      }
+      setCanManageChannels(!!memberRow?.can_manage_channels)
     }
     checkPermission()
   }, [selectedServer, currentUserId])
@@ -162,23 +142,6 @@ function ChannelSidebar({ selectedChannel, setSelectedChannel, selectedServer, o
     return () => supabase.removeChannel(channel)
   }, [selectedServer])
 
-  const handleAddChannel = async (e) => {
-    e.preventDefault()
-    if (!newChannelName.trim() || !selectedServer) return
-
-    const { data: { user } } = await supabase.auth.getUser()
-    const nextPosition = channels.length > 0 ? Math.max(...channels.map((c) => c.position)) + 1 : 1
-
-    await supabase.from('channels').insert({
-      name: newChannelName.trim().toLowerCase().replace(/\s+/g, '-'),
-      created_by: user.id,
-      position: nextPosition,
-      server_id: selectedServer.id,
-    })
-    setNewChannelName('')
-    setShowAddForm(false)
-  }
-
   const handleChannelDeleted = async (channelId) => {
     await supabase.from('messages').delete().eq('channel_id', channelId)
     await supabase.from('channels').delete().eq('id', channelId)
@@ -214,9 +177,9 @@ function ChannelSidebar({ selectedChannel, setSelectedChannel, selectedServer, o
 
   return (
     <div className="w-56 h-full bg-gray-800 text-gray-300 flex flex-col">
-      <div className="p-4 font-bold text-white border-b border-gray-700 flex items-center justify-between">
+      <div className="h-[65px] px-4 font-bold text-white border-b border-gray-700 flex items-center justify-between">
         <span className="truncate">{selectedServer?.name || 'Connext'}</span>
-        {selectedServer && hasServerSettingsAccess && <ServerMenu onOpenSettings={onOpenServerSettings} />}
+        {selectedServer && <ServerMenu onOpenSettings={onOpenServerSettings} />}
       </div>
       <div className="flex-1 overflow-y-auto p-2">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -233,27 +196,6 @@ function ChannelSidebar({ selectedChannel, setSelectedChannel, selectedServer, o
             ))}
           </SortableContext>
         </DndContext>
-
-        {canManageChannels && (showAddForm ? (
-          <form onSubmit={handleAddChannel} className="mt-2 px-1">
-            <input
-              type="text"
-              autoFocus
-              value={newChannelName}
-              onChange={(e) => setNewChannelName(e.target.value)}
-              onBlur={() => !newChannelName && setShowAddForm(false)}
-              placeholder="channel-name"
-              className="w-full bg-gray-900 text-white text-sm p-2 rounded outline-none"
-            />
-          </form>
-        ) : (
-          <button
-            onClick={() => setShowAddForm(true)}
-            className="w-full text-left px-3 py-2 rounded hover:bg-gray-700 text-sm text-gray-500 mt-2"
-          >
-            + Add Channel
-          </button>
-        ))}
       </div>
 
       {editingChannel && (

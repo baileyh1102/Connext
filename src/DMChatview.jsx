@@ -1,14 +1,30 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabaseClient'
 import attachIcon from './assets/icons8-add-file-50.png'
+import { linkify } from './linkify'
+import ImageLightbox from './ImageLightbox'
 
 // Renders a message's attachment according to its type — identical to ChatView's version
-function Attachment({ url, type, name }) {
+function Attachment({ url, type, name, onExpand }) {
   if (type === 'image') {
-    return <img src={url} alt={name} className="max-w-xs rounded mt-1" />
+    return (
+      <img
+        src={url}
+        alt={name}
+        onClick={() => onExpand(url, type)}
+        className="max-w-xs rounded mt-1 cursor-pointer hover:opacity-90 transition-opacity"
+      />
+    )
   }
   if (type === 'video') {
-    return <video src={url} controls className="max-w-xs rounded mt-1" />
+    return (
+      <video
+        src={url}
+        controls
+        onClick={() => onExpand(url, type)}
+        className="max-w-xs rounded mt-1 cursor-pointer"
+      />
+    )
   }
   if (type === 'audio') {
     return <audio src={url} controls className="mt-1" />
@@ -29,18 +45,20 @@ function Attachment({ url, type, name }) {
 }
 
 // DMChatView is a self-contained direct-message conversation, styled to be
-// visually identical to ChatView (same bubble layout, same hover action pill,
-// same attach icon) — just without reactions/threads in this first pass.
+// visually identical to ChatView. Editing a message populates the composer
+// bar at the bottom instead of turning the bubble into a textarea in place.
 function DMChatView({ conversation, currentUserId, otherProfile, myProfile }) {
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState('')
-  const [editingId, setEditingId] = useState(null)
-  const [editValue, setEditValue] = useState('')
+  const [editingMessage, setEditingMessage] = useState(null)
+  const [copiedId, setCopiedId] = useState(null)
+  const [expandedAttachment, setExpandedAttachment] = useState(null)
   const [pendingFile, setPendingFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState(null)
 
   const bottomRef = useRef(null)
   const fileInputRef = useRef(null)
+  const textareaRef = useRef(null)
 
   useEffect(() => {
     if (!conversation) return
@@ -92,8 +110,35 @@ function DMChatView({ conversation, currentUserId, otherProfile, myProfile }) {
     await supabase.from('dm_conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversation.id)
   }
 
+  const startEditing = (msg) => {
+    setEditingMessage(msg)
+    setNewMessage(msg.content)
+    textareaRef.current?.focus()
+  }
+
+  const cancelEditing = () => {
+    setEditingMessage(null)
+    setNewMessage('')
+  }
+
+  
+  const handleCopy = (id, content) => {
+    navigator.clipboard.writeText(content)
+    setCopiedId(id)
+    setTimeout(() => setCopiedId(null), 1500)
+  }
+
   const handleSend = async (e) => {
     e.preventDefault()
+
+    if (editingMessage) {
+      if (newMessage.trim()) {
+        await supabase.from('dm_messages').update({ content: newMessage.trim(), edited: true }).eq('id', editingMessage.id)
+      }
+      setEditingMessage(null)
+      setNewMessage('')
+      return
+    }
 
     if (pendingFile) {
       const type = getAttachmentType(pendingFile.name)
@@ -137,24 +182,15 @@ function DMChatView({ conversation, currentUserId, otherProfile, myProfile }) {
       e.preventDefault()
       handleSend(e)
     }
+    if (e.key === 'Escape' && editingMessage) {
+      cancelEditing()
+    }
   }
 
   const handleFileChange = (e) => {
     const file = e.target.files[0]
     if (file) setPendingFile(file)
     e.target.value = ''
-  }
-
-  const startEditing = (msg) => {
-    setEditingId(msg.id)
-    setEditValue(msg.content)
-  }
-
-  const submitEdit = async (id) => {
-    if (editValue.trim()) {
-      await supabase.from('dm_messages').update({ content: editValue.trim(), edited: true }).eq('id', id)
-    }
-    setEditingId(null)
   }
 
   const handleDelete = async (id) => {
@@ -172,7 +208,7 @@ function DMChatView({ conversation, currentUserId, otherProfile, myProfile }) {
         {messages.map((msg) => {
           const isOwn = msg.sender_id === currentUserId
           const senderProfile = isOwn ? null : otherProfile
-          const isEditing = editingId === msg.id
+          const isBeingEdited = editingMessage?.id === msg.id
 
           return (
             <div key={msg.id} className="flex items-start gap-3">
@@ -194,60 +230,83 @@ function DMChatView({ conversation, currentUserId, otherProfile, myProfile }) {
                   </span>
                   <span className="text-xs text-gray-400">{formatTime(msg.created_at)}</span>
                   {msg.edited && <span className="text-xs text-gray-400">(edited)</span>}
+                  {isBeingEdited && <span className="text-xs text-blue-500">(editing...)</span>}
                 </div>
 
-                {isEditing ? (
-                  <div className="mt-1">
-                    <textarea
-                      autoFocus
-                      value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault()
-                          submitEdit(msg.id)
-                        }
-                        if (e.key === 'Escape') setEditingId(null)
-                      }}
-                      rows={Math.min(editValue.split('\n').length, 6)}
-                      className="w-full border rounded p-2 text-sm resize-none"
-                    />
-                    <div className="text-xs text-gray-400 mt-1">
-                      "Enter" to save, "Esc" to cancel
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-start mt-1">
-                    <div className="relative inline-block group">
-                      {msg.content && (
-                        <div className="bg-white p-2 rounded shadow-sm">
-                          <span className="whitespace-pre-wrap">{msg.content}</span>
-                        </div>
-                      )}
-                      {msg.attachment_url && (
-                        <Attachment url={msg.attachment_url} type={msg.attachment_type} name={msg.attachment_name} />
-                      )}
+                <div className="flex flex-col items-start mt-1">
+                  <div className="relative inline-block group">
+                    {msg.content && (
+                      <div className={`bg-white p-2 rounded shadow-sm ${isBeingEdited ? 'ring-2 ring-blue-400' : ''}`}>
+                        <span className="whitespace-pre-wrap">{linkify(msg.content)}</span>
+                      </div>
+                    )}
+                    {msg.attachment_url && (
+                      <Attachment
+                        url={msg.attachment_url}
+                        type={msg.attachment_type}
+                        name={msg.attachment_name}
+                        onExpand={(url, type) => setExpandedAttachment({ url, type })}
+                      />
+                    )}
 
-                      {/* ---- HOVER ACTIONS: Edit / Delete (own messages only — no reactions/reply yet in DMs) ---- */}
+                    {/* ---- HOVER ACTIONS: Edit / Delete (own messages only — no reactions/reply yet in DMs) ---- */}
+                    <div className={`absolute left-full top-1/2 -translate-y-1/2 ml-2 flex items-center gap-3 opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity bg-white shadow-md rounded-full px-3 py-1.5 whitespace-nowrap z-10 ${isOwn ? '' : 'hidden'}`}>
+                      <div className="relative">
+                        <button
+                          onClick={() => handleCopy(msg.id, msg.content)}
+                          className="text-gray-400 hover:text-gray-600"
+                          title="Copy"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="15"
+                            height="15"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="translate-y-0.5"
+                          >
+                            <rect x="9" y="9" width="13" height="13" rx="2" />
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                          </svg>
+                        </button>
+                        {copiedId === msg.id && (
+                          <span className="absolute -top-7 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
+                            Copied!
+                          </span>
+                        )}
+                      </div>
                       {isOwn && (
-                        <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 flex items-center gap-3 opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity bg-white shadow-md rounded-full px-3 py-1.5 whitespace-nowrap z-10">
+                        <>
                           <button
                             onClick={() => startEditing(msg)}
-                            className="text-xs text-gray-400 hover:text-gray-600"
+                            className="text-gray-400 hover:text-gray-600"
+                            title="Edit"
                           >
-                            Edit
+                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                            </svg>
                           </button>
                           <button
                             onClick={() => handleDelete(msg.id)}
-                            className="text-xs text-red-400 hover:text-red-600"
+                            className="text-red-400 hover:text-red-600"
+                            title="Delete"
                           >
-                            Delete
+                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              <line x1="10" y1="11" x2="10" y2="17" />
+                              <line x1="14" y1="11" x2="14" y2="17" />
+                            </svg>
                           </button>
-                        </div>
+                        </>
                       )}
                     </div>
                   </div>
-                )}
+                </div>
               </div>
             </div>
           )
@@ -255,8 +314,25 @@ function DMChatView({ conversation, currentUserId, otherProfile, myProfile }) {
         <div ref={bottomRef} />
       </div>
 
+      {expandedAttachment && (
+        <ImageLightbox
+          url={expandedAttachment.url}
+          type={expandedAttachment.type}
+          onClose={() => setExpandedAttachment(null)}
+        />
+      )}
+
       {/* ---- MESSAGE INPUT BAR ---- */}
       <div className="bg-white">
+        {editingMessage && (
+          <div className="px-4 pt-3 flex items-center justify-between text-sm text-blue-600 bg-blue-50">
+            <span>Editing message</span>
+            <button onClick={cancelEditing} className="text-blue-400 hover:text-blue-600" title="Cancel edit">
+              ✕
+            </button>
+          </div>
+        )}
+
         {pendingFile && (
           <div className="px-4 pt-3 flex items-center gap-2">
             <div className="relative bg-gray-100 rounded-lg p-2 flex items-center gap-2 w-fit">
@@ -298,6 +374,7 @@ function DMChatView({ conversation, currentUserId, otherProfile, myProfile }) {
             <img src={attachIcon} alt="Attach file" className="w-6 h-6" />
           </button>
           <textarea
+            ref={textareaRef}
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
             onKeyDown={handleInputKeyDown}
@@ -306,7 +383,7 @@ function DMChatView({ conversation, currentUserId, otherProfile, myProfile }) {
             className="flex-1 border rounded p-2 resize-none"
           />
           <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-600/90">
-            Send
+            {editingMessage ? 'Save' : 'Send'}
           </button>
         </form>
       </div>

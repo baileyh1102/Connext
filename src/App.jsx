@@ -13,6 +13,7 @@ import HomePage from './HomePage'
 import CalendarPage from './CalendarPage'
 import DMSidebar from './DMSidebar'
 import DMChatView from './DMChatview'
+import NotificationBell from './NotificationBell'
 
 function App() {
   // ---- AUTH STATE ----
@@ -64,6 +65,9 @@ function App() {
   
   // Whether the current user can moderate (edit/delete) OTHERS' messages in this server
   const [canManageMessages, setCanManageMessages] = useState(false)
+  const [canManageCalendar, setCanManageCalendar] = useState(false)
+  const [canEditPosts, setCanEditPosts] = useState(false)
+  const [canDeletePosts, setCanDeletePosts] = useState(false)
 
   useEffect(() => {
     if (!selectedServer || !session) return
@@ -71,21 +75,22 @@ function App() {
     const checkPermission = async () => {
       if (selectedServer.created_by === session.user.id) {
         setCanManageMessages(true)
+        setCanManageCalendar(true)
+        setCanEditPosts(true)
+        setCanDeletePosts(true)
         return
       }
       const { data: memberRow } = await supabase
         .from('server_members')
-        .select('role_id')
+        .select('can_manage_messages, can_manage_calendar, can_edit_posts, can_delete_posts')
         .eq('server_id', selectedServer.id)
         .eq('user_id', session.user.id)
         .single()
 
-      if (memberRow?.role_id) {
-        const { data: roleRow } = await supabase.from('roles').select('can_manage_messages').eq('id', memberRow.role_id).single()
-        setCanManageMessages(!!roleRow?.can_manage_messages)
-      } else {
-        setCanManageMessages(false)
-      }
+      setCanManageMessages(!!memberRow?.can_manage_messages)
+      setCanManageCalendar(!!memberRow?.can_manage_calendar)
+      setCanEditPosts(!!memberRow?.can_edit_posts)
+      setCanDeletePosts(!!memberRow?.can_delete_posts)
     }
     checkPermission()
   }, [selectedServer, session])
@@ -404,8 +409,8 @@ function App() {
     }
   }
 
-  // Redeems an invite code: joins the server it belongs to (assigning the invite's
-  // role, if any), then switches to that server
+  // Redeems an invite code: joins the server it belongs to (applying whatever
+  // permissions the invite grants directly), then switches to that server
   const handleJoinServer = async (code) => {
     const trimmedCode = code.trim().toUpperCase()
 
@@ -432,7 +437,14 @@ function App() {
       await supabase.from('server_members').insert({
         server_id: invite.server_id,
         user_id: session.user.id,
-        role_id: invite.role_id,
+        can_manage_server: invite.grant_can_manage_server,
+        can_manage_channels: invite.grant_can_manage_channels,
+        can_manage_messages: invite.grant_can_manage_messages,
+        can_manage_members: invite.grant_can_manage_members,
+        can_kick_members: invite.grant_can_kick_members,
+        can_manage_calendar: invite.grant_can_manage_calendar,
+        can_edit_posts: invite.grant_can_edit_posts,
+        can_delete_posts: invite.grant_can_delete_posts,
       })
     }
 
@@ -637,7 +649,7 @@ function App() {
         </div>
         <div className="flex flex-col flex-1">
           {/* ---- HEADER: page switcher (Chat/Prayer Wall/Calendar) + avatar button that opens the dashboard dropdown ---- */}
-          <div className="bg-white shadow p-4 flex justify-between items-center relative">
+          <div className="h-[65px] bg-white shadow px-4 flex justify-between items-center relative">
             <img
               src={connextLogo}
               alt="Connext"
@@ -665,13 +677,16 @@ function App() {
                 <span className="text-gray-400 text-sm">{conversationOtherProfile?.display_name || '...'}</span>
               )}
             </div>
-            <button onClick={() => setShowDashboard(!showDashboard)} className="flex items-center gap-2">
-              {profile?.avatar_url ? (
-                <img src={profile.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full object-cover" />
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-gray-300" />
-              )}
-            </button>
+            <div className="flex items-center gap-3">
+              <NotificationBell currentUserId={session.user.id} />
+              <button onClick={() => setShowDashboard(!showDashboard)} className="flex items-center gap-2">
+                {profile?.avatar_url ? (
+                  <img src={profile.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full object-cover" />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-gray-300" />
+                )}
+              </button>
+            </div>
 
             {showDashboard && (
               <Dashboard
@@ -711,10 +726,12 @@ function App() {
               selectedServer={selectedServer}
               session={session}
               isAdmin={profile?.is_admin || false}
+              canEditPosts={canEditPosts}
+              canDeletePosts={canDeletePosts}
             />
           )}
           {currentPage === 'calendar' && (
-            <CalendarPage selectedServer={selectedServer} isAdmin={profile?.is_admin || false} />
+            <CalendarPage selectedServer={selectedServer} isAdmin={canManageCalendar} />
           )}
 
           {currentPage === 'dm' && selectedConversation && (
@@ -791,7 +808,17 @@ function App() {
             className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
             tabIndex={-1}
           >
-            {showPassword ? '🙈' : '👁'}
+            {showPassword ? (
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                <line x1="1" y1="1" x2="23" y2="23" />
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            )}
           </button>
         </div>
 
@@ -805,6 +832,24 @@ function App() {
               className="w-full p-2 pr-10 border rounded"
               required
             />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              tabIndex={-1}
+            >
+              {showPassword ? (
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                </svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              )}
+            </button>
           </div>
         )}
 

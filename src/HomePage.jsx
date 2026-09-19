@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
 import ReactionPicker from './ReactionPicker'
 import homeBg from './assets/mascot_stock_image.png'
+import communityWallHeader from './assets/community_wall_header.png'
 
 // Small three-dot menu, top-right of a post, for Edit/Delete — only rendered for the post's own author
 function PostMenu({ onEdit, onDelete }) {
@@ -18,18 +19,22 @@ function PostMenu({ onEdit, onDelete }) {
       </button>
       {showMenu && (
         <div className="absolute right-0 top-6 bg-white border rounded shadow-lg z-10 w-32">
-          <button
-            onClick={() => { onEdit(); setShowMenu(false) }}
-            className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-          >
-            Edit
-          </button>
-          <button
-            onClick={() => { onDelete(); setShowMenu(false) }}
-            className="w-full text-left px-3 py-2 text-sm text-red-500 hover:bg-gray-50"
-          >
-            Delete
-          </button>
+          {onEdit && (
+            <button
+              onClick={() => { onEdit(); setShowMenu(false) }}
+              className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              Edit
+            </button>
+          )}
+          {onDelete && (
+            <button
+              onClick={() => { onDelete(); setShowMenu(false) }}
+              className="w-full text-left px-3 py-2 text-sm text-red-500 hover:bg-gray-50"
+            >
+              Delete
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -41,7 +46,7 @@ function PostMenu({ onEdit, onDelete }) {
 // and optional anonymous posting. Laid out like CalendarPage — a tall
 // content rectangle over the mascot background, with a "+ Post" button to
 // reveal the composer instead of showing it up front.
-function HomePage({ selectedServer, session }) {
+function HomePage({ selectedServer, session, isAdmin, canEditPosts, canDeletePosts }) {
   const [posts, setPosts] = useState([])
   const [postsProfilesMap, setPostsProfilesMap] = useState({})
   const [postContent, setPostContent] = useState('')
@@ -285,7 +290,7 @@ function HomePage({ selectedServer, session }) {
     >
       <div className="max-w-xl mx-auto w-full flex flex-col flex-1">
         <div className="flex flex-col items-center gap-3 mb-4">
-          <h1 className="text-2xl font-bold text-gray-800 drop-shadow-md">Community Wall</h1>
+          <img src={communityWallHeader} alt="Community Wall" className="h-12 drp-shadow-md" />
           <button
             onClick={() => setShowComposer(!showComposer)}
             className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-1.5 rounded-full shadow"
@@ -374,12 +379,12 @@ function HomePage({ selectedServer, session }) {
                         <span className="font-semibold">{displayName}</span>
                         <span className="text-gray-500"> posted a {actionLabel}</span>
                       </p>
-                      {isOwnPost && !isEditing && (
-                        <PostMenu
-                          onEdit={() => startEditingPost(post)}
-                          onDelete={() => handleDeletePost(post.id)}
-                        />
-                      )}
+                      {(isOwnPost || canEditPosts || canDeletePosts) && !isEditing && (
+                      <PostMenu
+                        onEdit={(isOwnPost || canEditPosts) ? () => startEditingPost(post) : null}
+                        onDelete={(isOwnPost || canDeletePosts) ? () => handleDeletePost(post.id) : null}
+                      />
+                    )}
                     </div>
                     <p className="text-xs text-gray-400">{formatTime(post.created_at)}</p>
 

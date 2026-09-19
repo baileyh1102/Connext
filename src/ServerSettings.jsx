@@ -1,24 +1,25 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabaseClient'
+import ChannelSettings from './ChannelSettings'
 
 const TABS = [
   { id: 'general', label: 'General' },
+  { id: 'channels', label: 'Channels' },
   { id: 'members', label: 'Members' },
-  { id: 'roles', label: 'Roles' },
   { id: 'invites', label: 'Invites' },
 ]
 
 const PERMISSIONS = [
-  { key: 'can_manage_server', label: 'Manage Server', description: 'Allows members to change the server name, icon, and description.' },
-  { key: 'can_manage_channels', label: 'Manage Channels', description: 'Allows members to create, edit, and delete channels.' },
-  { key: 'can_manage_messages', label: 'Manage Messages', description: 'Allows members to delete or pin messages from other members.' },
-  { key: 'can_manage_roles', label: 'Manage Roles', description: 'Allows members to create, edit, and delete roles.' },
-  { key: 'can_kick_members', label: 'Kick Members', description: 'Allows members to remove other members from the server.' },
+  { key: 'can_manage_server', label: 'Manage Server', description: 'Change the server name, icon, and description.' },
+  { key: 'can_manage_channels', label: 'Manage Channels', description: 'Create, edit, and delete channels.' },
+  { key: 'can_manage_messages', label: 'Manage Messages', description: "Delete or edit other members' messages." },
+  { key: 'can_manage_members', label: 'Manage Members', description: "Edit other members' permissions." },
+  { key: 'can_kick_members', label: 'Kick Members', description: 'Remove other members from the server.' },
+  { key: 'can_manage_calendar', label: 'Manage Calendar', description: 'Connect or update the server calendar link.' },
+  { key: 'can_edit_posts', label: 'Edit Posts', description: "Edit other members' Home Wall posts." },
+  { key: 'can_delete_posts', label: 'Delete Posts', description: "Delete other members' Home Wall posts." },
 ]
 
-const DEFAULT_ROLE_PERMS = PERMISSIONS.reduce((acc, p) => ({ ...acc, [p.key]: false }), {})
-
-// Pill-shaped on/off switch (Discord-style) used throughout the role editor
 function ToggleSwitch({ checked, onChange, disabled }) {
   return (
     <button
@@ -40,23 +41,20 @@ function ToggleSwitch({ checked, onChange, disabled }) {
   )
 }
 
-// ServerSettings is a full-screen modal (Discord-style) for managing a server:
-// General info (name/icon/description), the member list (with kick + role
-// assignment), and role creation. The server's CREATOR always has every
-// permission; beyond that, what a person can do here depends on their
-// assigned role's permission flags (can_manage_server, can_manage_roles,
-// can_kick_members) rather than a single "admin" flag.
+function isAdmin(member) {
+  return PERMISSIONS.every((p) => !!member[p.key])
+}
+
 function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServerUpdated }) {
   const [activeTab, setActiveTab] = useState('general')
   const isCreator = server.created_by === currentUserId
 
-  // The current viewer's own role in this server, used to compute their permissions
-  const [myRole, setMyRole] = useState(null)
-  const canManageServer = isCreator || !!myRole?.can_manage_server
-  const canManageRoles = isCreator || !!myRole?.can_manage_roles
-  const canKickMembers = isCreator || !!myRole?.can_kick_members
+  const [myPermissions, setMyPermissions] = useState(null)
+  const canManageServer = isCreator || !!myPermissions?.can_manage_server
+  const canManageMembers = isCreator || !!myPermissions?.can_manage_members
+  const canKickMembers = isCreator || !!myPermissions?.can_kick_members
+  const canManageChannels = isCreator || !!myPermissions?.can_manage_channels
 
-  // ---- GENERAL TAB STATE ----
   const [name, setName] = useState(server.name || '')
   const [description, setDescription] = useState(server.description || '')
   const [iconUrl, setIconUrl] = useState(server.icon_url || '')
@@ -65,48 +63,72 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServ
   const [saveMessage, setSaveMessage] = useState('')
   const fileInputRef = useRef(null)
 
-  // ---- MEMBERS TAB STATE ----
-  const [members, setMembers] = useState([]) // [{ user_id, role_id, profile, role }]
-  const [openMemberMenu, setOpenMemberMenu] = useState(null) // user_id of the member whose action menu is open
+  const [channels, setChannels] = useState([])
+  const [newChannelName, setNewChannelName] = useState('')
+  const [editingChannel, setEditingChannel] = useState(null)
 
-  // ---- ROLES TAB STATE ----
-  const [roles, setRoles] = useState([])
-  const [roleSearch, setRoleSearch] = useState('')
-  const [roleView, setRoleView] = useState('list') // 'list' | 'edit'
-  const [editingRole, setEditingRole] = useState(null) // role being edited, or null when creating
-  const [roleName, setRoleName] = useState('')
-  const [rolePerms, setRolePerms] = useState(DEFAULT_ROLE_PERMS)
-  const filteredRoles = roles.filter((r) => r.name.toLowerCase().includes(roleSearch.toLowerCase()))
-  
-  
-  // ---- INVITES TAB STATE ----
+  const [members, setMembers] = useState([])
+  const [openMemberMenu, setOpenMemberMenu] = useState(null)
+
   const [invites, setInvites] = useState([])
-  const [newInviteRoleId, setNewInviteRoleId] = useState('') // '' = no role / public
-  // Look up the viewer's own role in this server (skip entirely if they're the creator — creator already has everything)
+  const [newInviteGrants, setNewInviteGrants] = useState(
+    PERMISSIONS.reduce((acc, p) => ({ ...acc, [p.key]: false }), {})
+  )
+
   useEffect(() => {
     if (isCreator) return
-
-    const fetchMyRole = async () => {
-      const { data: memberRow } = await supabase
+    const fetchMyPermissions = async () => {
+      const { data } = await supabase
         .from('server_members')
-        .select('role_id')
+        .select('*')
         .eq('server_id', server.id)
         .eq('user_id', currentUserId)
         .single()
-
-      if (memberRow?.role_id) {
-        const { data: roleRow } = await supabase.from('roles').select('*').eq('id', memberRow.role_id).single()
-        setMyRole(roleRow)
-      }
+      setMyPermissions(data)
     }
-    fetchMyRole()
+    fetchMyPermissions()
   }, [server.id, currentUserId, isCreator])
 
-  // Load members (with their profile + role info) whenever the Members tab is opened
+  useEffect(() => {
+    if (activeTab !== 'channels') return
+    const fetchChannels = async () => {
+      const { data } = await supabase
+        .from('channels')
+        .select('*')
+        .eq('server_id', server.id)
+        .order('position', { ascending: true })
+      setChannels(data || [])
+    }
+    fetchChannels()
+  }, [activeTab, server.id])
+
+  const handleCreateChannel = async (e) => {
+    e.preventDefault()
+    if (!newChannelName.trim()) return
+
+    const nextPosition = channels.length > 0 ? Math.max(...channels.map((c) => c.position || 0)) + 1 : 1
+
+    const { data, error } = await supabase
+      .from('channels')
+      .insert({
+        name: newChannelName.trim().toLowerCase().replace(/\s+/g, '-'),
+        created_by: currentUserId,
+        position: nextPosition,
+        server_id: server.id,
+      })
+      .select()
+      .single()
+
+    if (!error && data) {
+      setChannels((current) => [...current, data])
+      setNewChannelName('')
+    }
+  }
+
   const fetchMembers = async () => {
     const { data: memberRows } = await supabase
       .from('server_members')
-      .select('user_id, role_id')
+      .select('*')
       .eq('server_id', server.id)
 
     if (!memberRows) return
@@ -117,23 +139,10 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServ
       .select('user_id, display_name, avatar_url')
       .in('user_id', userIds)
 
-    const roleIds = memberRows.map((m) => m.role_id).filter(Boolean)
-    const { data: roleRows } = roleIds.length
-      ? await supabase.from('roles').select('*').in('id', roleIds)
-      : { data: [] }
-
     const profileMap = {}
     profileRows?.forEach((p) => { profileMap[p.user_id] = p })
-    const roleMap = {}
-    roleRows?.forEach((r) => { roleMap[r.id] = r })
 
-    setMembers(
-      memberRows.map((m) => ({
-        ...m,
-        profile: profileMap[m.user_id],
-        role: roleMap[m.role_id],
-      }))
-    )
+    setMembers(memberRows.map((m) => ({ ...m, profile: profileMap[m.user_id] })))
   }
 
   useEffect(() => {
@@ -141,26 +150,9 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServ
     fetchMembers()
   }, [activeTab, server.id])
 
-  // Load roles whenever the Roles tab is opened (or Members tab, since it needs role names for assignment)
-  useEffect(() => {
-    if (activeTab !== 'roles' && activeTab !== 'members') return
-
-    const fetchRoles = async () => {
-      const { data } = await supabase.from('roles').select('*').eq('server_id', server.id)
-      setRoles(data || [])
-    }
-    fetchRoles()
-  }, [activeTab, server.id])
-
-  
-  // Load invites whenever the Invites tab is opened (also ensures `roles` is populated for the create-invite dropdown)
   useEffect(() => {
     if (activeTab !== 'invites') return
-
     const fetchInvites = async () => {
-      const { data: roleRows } = await supabase.from('roles').select('*').eq('server_id', server.id)
-      setRoles(roleRows || [])
-
       const { data } = await supabase
         .from('invites')
         .select('*')
@@ -172,27 +164,31 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServ
   }, [activeTab, server.id])
 
   const generateInviteCode = () => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // no O/0 or I/1, avoids confusion
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
     let code = ''
     for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)]
     return code
   }
 
   const handleCreateInvite = async () => {
+    // Build the grant_* fields dynamically from PERMISSIONS, so adding a new
+    // permission in the future doesn't require touching this function too
+    const grants = PERMISSIONS.reduce((acc, p) => ({ ...acc, [`grant_${p.key}`]: newInviteGrants[p.key] }), {})
+
     const { data, error } = await supabase
       .from('invites')
       .insert({
         server_id: server.id,
         code: generateInviteCode(),
-        role_id: newInviteRoleId || null,
         created_by: currentUserId,
+        ...grants,
       })
       .select()
       .single()
 
     if (!error && data) {
       setInvites((current) => [data, ...current])
-      setNewInviteRoleId('')
+      setNewInviteGrants(PERMISSIONS.reduce((acc, p) => ({ ...acc, [p.key]: false }), {}))
     }
   }
 
@@ -239,69 +235,30 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServ
     setSaving(false)
   }
 
-  const openRoleCreator = () => {
-    setEditingRole(null)
-    setRoleName('')
-    setRolePerms(DEFAULT_ROLE_PERMS)
-    setRoleView('edit')
-  }
-
-  const openRoleEditor = (role) => {
-    setEditingRole(role)
-    setRoleName(role.name)
-    setRolePerms(PERMISSIONS.reduce((acc, p) => ({ ...acc, [p.key]: !!role[p.key] }), {}))
-    setRoleView('edit')
-  }
-
-  const handleSaveRole = async (e) => {
-    e.preventDefault()
-    if (!roleName.trim()) return
-
-    if (editingRole) {
-      const { data, error } = await supabase
-        .from('roles')
-        .update({ name: roleName.trim(), ...rolePerms })
-        .eq('id', editingRole.id)
-        .select()
-        .single()
-
-      if (!error && data) {
-        setRoles((current) => current.map((r) => (r.id === data.id ? data : r)))
-        setRoleView('list')
-      }
-    } else {
-      const { data, error } = await supabase
-        .from('roles')
-        .insert({ server_id: server.id, name: roleName.trim(), ...rolePerms })
-        .select()
-        .single()
-
-      if (!error && data) {
-        setRoles((current) => [...current, data])
-        setRoleView('list')
-      }
-    }
-  }
-
-  const handleDeleteRole = async (roleId) => {
-    if (window.confirm('Delete this role? Members with this role will lose it.')) {
-      await supabase.from('roles').delete().eq('id', roleId)
-      setRoles((current) => current.filter((r) => r.id !== roleId))
-      setRoleView('list')
-    }
-  }
-
-  const handleAssignRole = async (userId, roleId) => {
+  const handleTogglePermission = async (userId, permKey, value) => {
     await supabase
       .from('server_members')
-      .update({ role_id: roleId || null })
+      .update({ [permKey]: value })
       .eq('server_id', server.id)
       .eq('user_id', userId)
 
     setMembers((current) =>
-      current.map((m) => (m.user_id === userId ? { ...m, role_id: roleId, role: roles.find((r) => r.id === roleId) } : m))
+      current.map((m) => (m.user_id === userId ? { ...m, [permKey]: value } : m))
     )
-    setOpenMemberMenu(null)
+  }
+
+  const handleToggleAdmin = async (userId, makeAdmin) => {
+    const updates = PERMISSIONS.reduce((acc, p) => ({ ...acc, [p.key]: makeAdmin }), {})
+
+    await supabase
+      .from('server_members')
+      .update(updates)
+      .eq('server_id', server.id)
+      .eq('user_id', userId)
+
+    setMembers((current) =>
+      current.map((m) => (m.user_id === userId ? { ...m, ...updates } : m))
+    )
   }
 
   const handleKickMember = async (userId, displayName) => {
@@ -329,7 +286,6 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServ
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-lg w-[700px] h-[80vh] flex overflow-hidden">
-        {/* ---- LEFT NAV ---- */}
         <div className="w-48 bg-gray-100 p-4 flex flex-col">
           <h2 className="text-xs font-semibold text-gray-400 uppercase mb-2 truncate">{server.name}</h2>
           {TABS.map((tab) => (
@@ -345,7 +301,6 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServ
           ))}
         </div>
 
-        {/* ---- RIGHT CONTENT ---- */}
         <div className="flex-1 flex flex-col">
           <div className="flex justify-between items-center p-4 border-b">
             <h2 className="font-bold">{TABS.find((t) => t.id === activeTab)?.label}</h2>
@@ -353,7 +308,6 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServ
           </div>
 
           <div className="flex-1 overflow-y-auto p-6">
-            {/* ---- GENERAL TAB ---- */}
             {activeTab === 'general' && (
               <div>
                 {!canManageServer && (
@@ -426,17 +380,54 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServ
               </div>
             )}
 
-            {/* ---- MEMBERS TAB ---- */}
+            {activeTab === 'channels' && (
+              <div>
+                {channels.length === 0 && (
+                  <p className="text-sm text-gray-400 mb-4">No channels yet.</p>
+                )}
+                <div className="space-y-1 mb-6">
+                  {channels.map((ch) => (
+                    <button
+                      key={ch.id}
+                      type="button"
+                      onClick={() => canManageChannels && setEditingChannel(ch)}
+                      className={`w-full flex justify-between items-center p-2 rounded text-left ${
+                        canManageChannels ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'
+                      }`}
+                    >
+                      <span className="text-sm font-medium"># {ch.name}</span>
+                      {canManageChannels && <span className="text-gray-300">›</span>}
+                    </button>
+                  ))}
+                </div>
+
+                {canManageChannels ? (
+                  <form onSubmit={handleCreateChannel} className="flex gap-2 pt-4 border-t">
+                    <input
+                      type="text"
+                      value={newChannelName}
+                      onChange={(e) => setNewChannelName(e.target.value)}
+                      placeholder="channel-name"
+                      className="flex-1 border rounded p-2 text-sm"
+                    />
+                    <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 whitespace-nowrap">
+                      + Channel
+                    </button>
+                  </form>
+                ) : (
+                  <p className="text-sm text-gray-400">You don't have permission to create channels.</p>
+                )}
+              </div>
+            )}
+
             {activeTab === 'members' && (
               <div>
                 <p className="text-sm text-gray-500 mb-4">{members.length} member{members.length === 1 ? '' : 's'}</p>
                 <div className="space-y-1">
                   {members.map((m) => {
                     const isOwner = m.user_id === server.created_by
-                    const isSelf = m.user_id === currentUserId
-                    const canAssignRoleToThisMember = canManageRoles
-                    const canKickThisMember = canKickMembers && !isOwner && !isSelf
-                    const canActOnThisMember = canAssignRoleToThisMember || canKickThisMember
+                    const memberIsAdmin = !isOwner && isAdmin(m)
+                    const canActOnThisMember = canManageMembers || (canKickMembers && !isOwner)
 
                     return (
                       <div key={m.user_id} className="relative">
@@ -454,31 +445,40 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServ
                             {isOwner && (
                               <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">Owner</span>
                             )}
+                            {memberIsAdmin && (
+                              <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">Admin</span>
+                            )}
                           </div>
-                          {m.role && <span className="text-xs text-gray-500">{m.role.name}</span>}
                         </button>
 
                         {openMemberMenu === m.user_id && (
-                          <div className="absolute right-0 top-10 bg-white border rounded-lg shadow-lg z-10 w-52 p-2">
-                            {canAssignRoleToThisMember && (
-                              <div className="mb-2">
-                                <label className="block text-xs text-gray-400 mb-1 px-1">Assign role</label>
-                                <select
-                                  value={m.role_id || ''}
-                                  onChange={(e) => handleAssignRole(m.user_id, e.target.value ? Number(e.target.value) : null)}
-                                  className="w-full text-sm border rounded p-1.5"
-                                >
-                                  <option value="">No role</option>
-                                  {roles.map((r) => (
-                                    <option key={r.id} value={r.id}>{r.name}</option>
+                          <div className="absolute right-0 top-10 bg-white border rounded-lg shadow-lg z-10 w-64 p-3">
+                            {canManageMembers && (
+                              <>
+                                <div className="flex items-center justify-between mb-3 pb-3 border-b">
+                                  <span className="text-sm font-semibold">Admin (all permissions)</span>
+                                  <ToggleSwitch
+                                    checked={isAdmin(m)}
+                                    onChange={(value) => handleToggleAdmin(m.user_id, value)}
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  {PERMISSIONS.map((p) => (
+                                    <div key={p.key} className="flex items-center justify-between">
+                                      <span className="text-xs text-gray-600">{p.label}</span>
+                                      <ToggleSwitch
+                                        checked={!!m[p.key]}
+                                        onChange={(value) => handleTogglePermission(m.user_id, p.key, value)}
+                                      />
+                                    </div>
                                   ))}
-                                </select>
-                              </div>
+                                </div>
+                              </>
                             )}
-                            {canKickThisMember && (
+                            {canKickMembers && !isOwner && (
                               <button
                                 onClick={() => handleKickMember(m.user_id, m.profile?.display_name)}
-                                className="w-full text-left text-sm text-red-500 hover:bg-red-50 rounded p-1.5"
+                                className="w-full text-left text-sm text-red-500 hover:bg-red-50 rounded p-1.5 mt-3 pt-3 border-t"
                               >
                                 Remove from server
                               </button>
@@ -492,134 +492,23 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServ
               </div>
             )}
 
-            {/* ---- ROLES TAB ---- */}
-            {activeTab === 'roles' && roleView === 'list' && (
-              <div>
-                <div className="flex items-center gap-2 mb-4">
-                  <input
-                    type="text"
-                    value={roleSearch}
-                    onChange={(e) => setRoleSearch(e.target.value)}
-                    placeholder="Search roles"
-                    className="flex-1 p-2 border rounded text-sm"
-                  />
-                  {canManageRoles && (
-                    <button
-                      type="button"
-                      onClick={openRoleCreator}
-                      className="bg-blue-600 text-white px-3 py-2 rounded text-sm font-medium hover:bg-blue-700 whitespace-nowrap"
-                    >
-                      Create Role
-                    </button>
-                  )}
-                </div>
-
-                {roles.length === 0 && (
-                  <p className="text-sm text-gray-400">No roles have been created yet.</p>
-                )}
-                {roles.length > 0 && filteredRoles.length === 0 && (
-                  <p className="text-sm text-gray-400">No roles match "{roleSearch}".</p>
-                )}
-
-                <div className="space-y-1">
-                  {filteredRoles.map((role) => (
-                    <button
-                      key={role.id}
-                      type="button"
-                      onClick={() => canManageRoles && openRoleEditor(role)}
-                      className={`w-full flex justify-between items-center p-2 rounded text-left ${
-                        canManageRoles ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'
-                      }`}
-                    >
-                      <div>
-                        <p className="text-sm font-medium">{role.name}</p>
-                        <p className="text-xs text-gray-400">
-                          {PERMISSIONS.filter((p) => role[p.key]).map((p) => p.label).join(', ') || 'No permissions'}
-                        </p>
-                      </div>
-                      {canManageRoles && <span className="text-gray-300">›</span>}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* ---- ROLES TAB: create/edit screen ---- */}
-            {activeTab === 'roles' && roleView === 'edit' && (
-              <form onSubmit={handleSaveRole}>
-                <button
-                  type="button"
-                  onClick={() => setRoleView('list')}
-                  className="text-sm text-gray-500 hover:text-gray-700 mb-4"
-                >
-                  ← Back to Roles
-                </button>
-
-                <h3 className="text-sm font-semibold text-gray-400 uppercase mb-1">Role Name</h3>
-                <input
-                  type="text"
-                  value={roleName}
-                  onChange={(e) => setRoleName(e.target.value)}
-                  placeholder="e.g. Leader"
-                  className="w-full p-2 mb-6 border rounded text-sm"
-                  autoFocus
-                />
-
-                <h3 className="text-sm font-semibold text-gray-400 uppercase mb-2">Permissions</h3>
-                <div className="divide-y">
-                  {PERMISSIONS.map((p) => (
-                    <div key={p.key} className="flex items-center justify-between gap-4 py-3">
-                      <div>
-                        <p className="text-sm font-medium">{p.label}</p>
-                        <p className="text-xs text-gray-400">{p.description}</p>
-                      </div>
-                      <ToggleSwitch
-                        checked={rolePerms[p.key]}
-                        onChange={(value) => setRolePerms((current) => ({ ...current, [p.key]: value }))}
-                      />
-                    </div>
-                  ))}
-                </div>
-
-                <div className="flex justify-between items-center mt-6 pt-4 border-t">
-                  {editingRole ? (
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteRole(editingRole.id)}
-                      className="text-sm text-red-500 hover:text-red-600"
-                    >
-                      Delete Role
-                    </button>
-                  ) : (
-                    <span />
-                  )}
-                  <button
-                    type="submit"
-                    disabled={!roleName.trim()}
-                    className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    Save Changes
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {/* ---- INVITES TAB ---- */}
             {activeTab === 'invites' && (
               <div>
                 {canManageServer ? (
                   <div className="mb-6 bg-gray-50 p-4 rounded-lg">
-                    <label className="block text-sm font-medium mb-1">Role assigned to new members</label>
-                    <select
-                      value={newInviteRoleId}
-                      onChange={(e) => setNewInviteRoleId(e.target.value)}
-                      className="w-full p-2 mb-3 border rounded text-sm"
-                    >
-                      <option value="">Public — no role (default permissions)</option>
-                      {roles.map((r) => (
-                        <option key={r.id} value={r.id}>{r.name}</option>
+                    <label className="block text-sm font-medium mb-2">Permissions granted to new members</label>
+                    <div className="space-y-1 mb-3">
+                      {PERMISSIONS.map((p) => (
+                        <label key={p.key} className="flex items-center gap-2 text-sm text-gray-600">
+                          <input
+                            type="checkbox"
+                            checked={newInviteGrants[p.key]}
+                            onChange={(e) => setNewInviteGrants((current) => ({ ...current, [p.key]: e.target.checked }))}
+                          />
+                          {p.label}
+                        </label>
                       ))}
-                    </select>
+                    </div>
                     <button
                       onClick={handleCreateInvite}
                       className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700"
@@ -633,33 +522,52 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServ
 
                 <div className="space-y-2">
                   {invites.length === 0 && <p className="text-sm text-gray-400">No invite codes yet.</p>}
-                  {invites.map((invite) => (
-                    <div key={invite.id} className={`flex justify-between items-center p-2 rounded ${invite.active ? 'hover:bg-gray-50' : 'opacity-50'}`}>
-                      <div>
-                        <p className="text-sm font-mono font-medium">{invite.code}</p>
-                        <p className="text-xs text-gray-400">
-                          {roles.find((r) => r.id === invite.role_id)?.name || 'Public — no role'}
-                          {!invite.active && ' · Revoked'}
-                        </p>
-                      </div>
-                      {canManageServer && (
-                        <div className="flex gap-3">
-                          <button onClick={() => copyInviteCode(invite.code)} className="text-xs text-blue-600 hover:underline">
-                            Copy
-                          </button>
-                          <button onClick={() => handleToggleInviteActive(invite)} className="text-xs text-gray-500 hover:text-gray-700">
-                            {invite.active ? 'Revoke' : 'Reactivate'}
-                          </button>
+                  {invites.map((invite) => {
+                    const grantedLabels = PERMISSIONS.filter((p) => invite[`grant_${p.key}`]).map((p) => p.label)
+                    return (
+                      <div key={invite.id} className={`flex justify-between items-center p-2 rounded ${invite.active ? 'hover:bg-gray-50' : 'opacity-50'}`}>
+                        <div>
+                          <p className="text-sm font-mono font-medium">{invite.code}</p>
+                          <p className="text-xs text-gray-400">
+                            {grantedLabels.length > 0 ? grantedLabels.join(', ') : 'No extra permissions'}
+                            {!invite.active && ' · Revoked'}
+                          </p>
                         </div>
-                      )}
-                    </div>
-                  ))}
+                        {canManageServer && (
+                          <div className="flex gap-3">
+                            <button onClick={() => copyInviteCode(invite.code)} className="text-xs text-blue-600 hover:underline">
+                              Copy
+                            </button>
+                            <button onClick={() => handleToggleInviteActive(invite)} className="text-xs text-gray-500 hover:text-gray-700">
+                              {invite.active ? 'Revoke' : 'Reactivate'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {editingChannel && (
+        <ChannelSettings
+          channel={editingChannel}
+          server={server}
+          onClose={() => setEditingChannel(null)}
+          onDeleted={(channelId) => {
+            setChannels((current) => current.filter((c) => c.id !== channelId))
+          }}
+          onUpdated={(updates) => {
+            setChannels((current) =>
+              current.map((c) => (c.id === editingChannel.id ? { ...c, ...updates } : c))
+            )
+          }}
+        />
+      )}
     </div>
   )
 }
