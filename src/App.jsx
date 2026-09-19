@@ -533,12 +533,28 @@ function App() {
 
   // Uploads a file to Storage, then sends a message carrying a reference to it
   const handleSendAttachment = async (file, caption = '') => {
+    if (!selectedChannel) return
+
+    // A GIF picked from Giphy is already hosted — just link to it directly,
+    // no upload needed
+    if (file.isGifUrl) {
+      await supabase.from('messages').insert({
+        content: caption,
+        user_id: session.user.id,
+        user_email: session.user.email,
+        channel_id: selectedChannel.id,
+        attachment_url: file.url,
+        attachment_type: 'gif',
+        attachment_name: 'GIF',
+      })
+      return
+    }
+
     const type = getAttachmentType(file.name)
     if (!type) {
       alert('Unsupported file type. Please use PDF, PNG, MP4, MP3, or WAV.')
       return
     }
-    if (!selectedChannel) return
 
     const filePath = `${selectedChannel.id}/${Date.now()}-${file.name}`
     const { error: uploadError } = await supabase.storage.from('attachments').upload(filePath, file)

@@ -4,12 +4,13 @@ import attachIcon from './assets/icons8-add-file-50.png'
 import UserProfileCard from './UserProfileCard'
 import { linkify } from './linkify'
 import ImageLightbox from './ImageLightbox'
+import GifPicker from './GifPicker'
 
 // Renders a message's attachment according to its type — an image, a video/audio
 // player, or a document link for PDFs. Images and videos open in a full-screen
 // lightbox when clicked.
 function Attachment({ url, type, name, onExpand }) {
-  if (type === 'image') {
+  if (type === 'image' || type === 'gif') {
     return (
       <img
         src={url}
@@ -65,6 +66,7 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
   const [showActions, setShowActions] = useState(false) // whether the expandable "+" action row is open
   const [copiedId, setCopiedId] = useState(null) // id of the message whose "Copied!" tooltip is currently showing
   const [expandedAttachment, setExpandedAttachment] = useState(null) // { url, type } currently shown in the lightbox
+  const [showGifPicker, setShowGifPicker] = useState(false)
 
   // Smart auto-scroll: only scrolls down when a message is genuinely ADDED
   // (not edited or deleted — those don't change the message count), and only
@@ -123,6 +125,14 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
     navigator.clipboard.writeText(content)
     setCopiedId(id)
     setTimeout(() => setCopiedId(null), 1500)
+  }
+
+  // A GIF is sent as an attachment, same as any image — Giphy's URL is just
+  // used directly rather than uploading a file to our own storage
+  const handleSendGif = async (gifUrl) => {
+    setShowGifPicker(false)
+    setShowActions(false)
+    await handleSendAttachment({ isGifUrl: true, url: gifUrl }, '')
   }
 
   const handleFileChange = (e) => {
@@ -437,17 +447,32 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
           </button>
 
           {showActions && (
-            <button
-              type="button"
-              onClick={() => {
-                fileInputRef.current.click()
-                setShowActions(false)
-              }}
-              className="mb-1 opacity-60 hover:opacity-100 transition-opacity flex-shrink-0"
-              title="Attach a file"
-            >
-              <img src={attachIcon} alt="Attach file" className="w-6 h-6" />
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  fileInputRef.current.click()
+                  setShowActions(false)
+                }}
+                className="mb-1 opacity-60 hover:opacity-100 transition-opacity flex-shrink-0"
+                title="Attach a file"
+              >
+                <img src={attachIcon} alt="Attach file" className="w-6 h-6" />
+              </button>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowGifPicker(!showGifPicker)}
+                  className="mb-1 text-xs font-bold border border-gray-300 rounded px-1.5 py-1 text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-colors flex-shrink-0"
+                  title="Send a GIF"
+                >
+                  GIF
+                </button>
+                {showGifPicker && (
+                  <GifPicker onSelect={handleSendGif} onClose={() => setShowGifPicker(false)} />
+                )}
+              </div>
+            </>
           )}
 
           <textarea
