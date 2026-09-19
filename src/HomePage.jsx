@@ -3,6 +3,7 @@ import { supabase } from './supabaseClient'
 import ReactionPicker from './ReactionPicker'
 import homeBg from './assets/mascot_stock_image.png'
 import communityWallHeader from './assets/community_wall_header.png'
+import FloatingBubbles from './FloatingBubbles'
 
 // Small three-dot menu, top-right of a post, for Edit/Delete — only rendered for the post's own author
 function PostMenu({ onEdit, onDelete }) {
@@ -283,13 +284,18 @@ function HomePage({ selectedServer, session, isAdmin, canEditPosts, canDeletePos
     })
   }
 
-  return (
+    return (
     <div
-      className="flex-1 overflow-y-auto bg-gray-100 p-6 flex flex-col"
+      className="relative flex-1 overflow-y-auto bg-gray-100"
       style={{ backgroundImage: `url(${homeBg})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
     >
-      <div className="max-w-xl mx-auto w-full flex flex-col flex-1">
-        <div className="flex flex-col items-center gap-3 mb-4">
+      <FloatingBubbles
+        selectedServer={selectedServer}
+        currentUserId={session.user.id}
+        currentUserName={postsProfilesMap[session.user.id]?.display_name}
+      />     
+      <div className="relative z-10 max-w-xl mx-auto w-full flex flex-col flex-1 pointer-events-none">
+        <div className="flex flex-col items-center gap-3 mb-4 pointer-events-auto">
           <img src={communityWallHeader} alt="Community Wall" className="h-12 drp-shadow-md" />
           <button
             onClick={() => setShowComposer(!showComposer)}
@@ -480,7 +486,7 @@ function HomePage({ selectedServer, session, isAdmin, canEditPosts, canDeletePos
               </div>
             )
           })}
-        </div>
+    </div>
       </div>
     </div>
   )

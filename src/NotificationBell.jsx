@@ -7,7 +7,9 @@ import { supabase } from './supabaseClient'
 // simply insert rows into the `notifications` table and they'll show up here.
 function NotificationBell({ currentUserId }) {
   const [notifications, setNotifications] = useState([])
+  const [senderProfiles, setSenderProfiles] = useState({}) // { user_id: { display_name, avatar_url } }
   const [showDropdown, setShowDropdown] = useState(false)
+  const [selectedNotification, setSelectedNotification] = useState(null) // the one currently shown in the detail popup
   const dropdownRef = useRef(null)
 
   const unreadCount = notifications.filter((n) => !n.read).length
@@ -20,6 +22,18 @@ function NotificationBell({ currentUserId }) {
       .order('created_at', { ascending: false })
       .limit(50)
     setNotifications(data || [])
+
+    const senderIds = [...new Set((data || []).map((n) => n.sender_id).filter(Boolean))]
+    if (senderIds.length > 0) {
+      const { data: profileRows } = await supabase
+        .from('profiles')
+        .select('user_id, display_name, avatar_url')
+        .in('user_id', senderIds)
+
+      const map = {}
+      profileRows?.forEach((p) => { map[p.user_id] = p })
+      setSenderProfiles(map)
+    }
   }
 
   useEffect(() => {
@@ -62,6 +76,15 @@ function NotificationBell({ currentUserId }) {
     setNotifications((current) => current.filter((n) => n.id !== id))
   }
 
+  // Short preview text shown in the dropdown list — the full message only
+  // shows once you click into the detail popup
+  const getPreviewText = (n) => {
+    const senderName = senderProfiles[n.sender_id]?.display_name || 'Someone'
+    if (n.type === 'prayer') return `${senderName} sent you a note`
+    if (n.type === 'birthday') return n.content // birthday messages are already short
+    return n.content
+  }
+
   const formatTime = (timestamp) => {
     const date = new Date(timestamp)
     const now = new Date()
@@ -96,11 +119,11 @@ function NotificationBell({ currentUserId }) {
             <p className="text-sm text-gray-400 text-center p-6">No notifications yet.</p>
           ) : (
             notifications.map((n) => (
-              <div key={n.id} className={`flex justify-between items-start gap-2 p-3 border-b last:border-b-0 ${n.read ? '' : 'bg-blue-50'}`}>
-                <div>
-                  <p className="text-sm text-gray-800">{n.content}</p>
+              <div key={n.id} className={`flex justify-between items-start gap-2 p-3 border-b last:border-b-0 hover:bg-gray-50 cursor-pointer ${n.read ? '' : 'bg-blue-50'}`}>
+                <button onClick={() => setSelectedNotification(n)} className="text-left flex-1 min-w-0">
+                  <p className="text-sm text-gray-800 break-words">{getPreviewText(n)}</p>
                   <p className="text-xs text-gray-400 mt-0.5">{formatTime(n.created_at)}</p>
-                </div>
+                </button>
                 <button
                   onClick={() => handleDelete(n.id)}
                   className="text-gray-300 hover:text-red-500 flex-shrink-0"
@@ -111,6 +134,31 @@ function NotificationBell({ currentUserId }) {
               </div>
             ))
           )}
+        </div>
+      )}
+
+      {selectedNotification && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={() => setSelectedNotification(null)}
+        >
+          <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-lg shadow-lg w-80 p-5">
+            <div className="flex justify-between items-start mb-3">
+              <div className="flex items-center gap-2">
+                {senderProfiles[selectedNotification.sender_id]?.avatar_url ? (
+                  <img src={senderProfiles[selectedNotification.sender_id].avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-gray-300" />
+                )}
+                <span className="text-sm font-semibold">
+                  {senderProfiles[selectedNotification.sender_id]?.display_name || 'Notification'}
+                </span>
+              </div>
+              <button onClick={() => setSelectedNotification(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">{selectedNotification.content}</p>
+            <p className="text-xs text-gray-400 mt-3">{formatTime(selectedNotification.created_at)}</p>
+          </div>
         </div>
       )}
     </div>
