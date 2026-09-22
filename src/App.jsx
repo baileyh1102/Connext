@@ -589,6 +589,90 @@ function App() {
     setNewMessage('')
   }
 
+  // Creates a checklist: first a normal message (carrier), then the
+  // checklist row + its starting items linked to that message
+  const handleCreateChecklist = async ({ title, items }) => {
+    if (!selectedChannel) return
+
+    const { data: messageRow, error: msgError } = await supabase
+      .from('messages')
+      .insert({
+        content: '',
+        user_id: session.user.id,
+        user_email: session.user.email,
+        channel_id: selectedChannel.id,
+      })
+      .select()
+      .single()
+
+    if (msgError || !messageRow) {
+      console.log('Checklist message creation error:', msgError)
+      return
+    }
+
+    const { data: checklistRow, error: checklistError } = await supabase
+      .from('checklists')
+      .insert({
+        message_id: messageRow.id,
+        title,
+        created_by: session.user.id,
+      })
+      .select()
+      .single()
+
+    if (checklistError || !checklistRow) {
+      console.log('Checklist creation error:', checklistError)
+      return
+    }
+
+    await supabase.from('checklist_items').insert(
+      items.map((text, index) => ({ checklist_id: checklistRow.id, item_text: text, position: index }))
+    )
+  }
+
+  // Creates a poll: first a normal message (as the "carrier" for the poll,
+  // same pattern as an attachment), then the poll row + its options linked
+  // to that message
+  const handleCreatePoll = async ({ question, options, allowMultiple }) => {
+    if (!selectedChannel) return
+
+    const { data: messageRow, error: msgError } = await supabase
+      .from('messages')
+      .insert({
+        content: '',
+        user_id: session.user.id,
+        user_email: session.user.email,
+        channel_id: selectedChannel.id,
+      })
+      .select()
+      .single()
+
+    if (msgError || !messageRow) {
+      console.log('Poll message creation error:', msgError)
+      return
+    }
+
+    const { data: pollRow, error: pollError } = await supabase
+      .from('polls')
+      .insert({
+        message_id: messageRow.id,
+        question,
+        allow_multiple: allowMultiple,
+        created_by: session.user.id,
+      })
+      .select()
+      .single()
+
+    if (pollError || !pollRow) {
+      console.log('Poll creation error:', pollError)
+      return
+    }
+
+    await supabase.from('poll_options').insert(
+      options.map((text, index) => ({ poll_id: pollRow.id, option_text: text, position: index }))
+    )
+  }
+
   // Sends a reply inside the currently open thread
   const handleSendReply = async (replyText) => {
     if (!replyText.trim() || !activeThread) return
@@ -723,12 +807,16 @@ function App() {
             setNewMessage={setNewMessage}
             handleSendMessage={handleSendMessage}
             handleSendAttachment={handleSendAttachment}
+            handleCreatePoll={handleCreatePoll}
+            handleCreateChecklist={handleCreateChecklist}
             handleEditMessage={handleEditMessage}
             handleDeleteMessage={handleDeleteMessage}
             formatTime={formatTime}
             formatDateLabel={formatDateLabel}
             isNewDay={isNewDay}
             currentUserId={session.user.id}
+            currentUserEmail={session.user.email}
+            selectedChannelId={selectedChannel?.id}
             replyCounts={replyCounts}
             onOpenThread={setActiveThread}
             reactionsMap={reactionsMap}

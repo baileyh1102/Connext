@@ -198,10 +198,10 @@ function FloatingBubbles({ selectedServer, currentUserId, currentUserName }) {
       recipient_id: selectedMember.user_id,
       sender_id: currentUserId,
       type: 'prayer',
-      content: `${currentUserName || 'Someone'} sent you a prayer: "${prayerText.trim()}"`,
+      content: `${currentUserName || 'Someone'} sent you a note: "${prayerText.trim()}"`,
     })
 
-    setSentMessage('Prayer sent!')
+    setSentMessage('Note sent!')
     setPrayerText('')
     setTimeout(() => {
       setSelectedMember(null)
@@ -216,7 +216,7 @@ function FloatingBubbles({ selectedServer, currentUserId, currentUserName }) {
           key={m.user_id}
           ref={(el) => (bubbleRefs.current[index] = el)}
           onClick={() => setSelectedMember(m)}
-          title={`Send ${m.display_name || 'this member'} a prayer`}
+          title={`Send ${m.display_name || 'this member'} a note`}
           className="absolute top-0 left-0 pointer-events-auto rounded-full overflow-hidden shadow-md"
           style={{ width: m.size, height: m.size }}
         >
@@ -242,7 +242,7 @@ function FloatingBubbles({ selectedServer, currentUserId, currentUserName }) {
               ) : (
                 <div className="w-10 h-10 rounded-full bg-indigo-300" />
               )}
-              <p className="font-semibold text-sm">Send a prayer to {selectedMember.display_name || 'this member'}</p>
+              <p className="font-semibold text-sm">Send a short note to {selectedMember.display_name || 'this member'}</p>
             </div>
 
             {sentMessage ? (

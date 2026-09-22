@@ -8,11 +8,11 @@ const TABS = [
 ]
 
 const PERMISSIONS = [
-  { key: 'can_view', label: 'View Channel', description: 'Allows seeing this channel exists and reading its messages.' },
-  { key: 'can_send_messages', label: 'Send Messages', description: 'Allows posting new messages in this channel.' },
+  { key: 'can_view', label: 'View Channels', description: 'Allows seeing channels in this category and reading their messages.' },
+  { key: 'can_send_messages', label: 'Send Messages', description: 'Allows posting new messages in channels in this category.' },
   { key: 'can_react', label: 'React to Messages', description: 'Allows adding emoji reactions to messages.' },
   { key: 'can_reply', label: 'Reply to Messages', description: 'Allows starting or adding to message threads.' },
-  { key: 'can_edit_delete_own', label: 'Edit/Delete Own Messages', description: 'Allows editing or deleting messages they sent in this channel.' },
+  { key: 'can_edit_delete_own', label: 'Edit/Delete Own Messages', description: 'Allows editing or deleting messages they sent.' },
 ]
 
 const DEFAULT_PERMS = PERMISSIONS.reduce((acc, p) => ({ ...acc, [p.key]: true }), {})
@@ -37,21 +37,16 @@ function ToggleSwitch({ checked, onChange }) {
   )
 }
 
-function ChannelSettings({ channel, server, onClose, onDeleted, onUpdated }) {
+// CategorySettings is a Discord-style modal for a channel CATEGORY: General
+// (name + delete) and Permissions (Default + per-member overrides). Any
+// channel inside this category inherits these permissions UNTIL that channel
+// gets its own explicit setting — at that point it becomes independent
+// (this is enforced at the database level via a COALESCE fallback chain:
+// channel-specific -> category-specific -> allowed).
+function CategorySettings({ category, server, onClose, onDeleted, onUpdated }) {
   const [activeTab, setActiveTab] = useState('general')
-  const [creatorProfile, setCreatorProfile] = useState(null)
 
-  useEffect(() => {
-    if (!channel.created_by) return
-    const fetchCreator = async () => {
-      const { data } = await supabase.from('profiles').select('display_name, avatar_url').eq('user_id', channel.created_by).single()
-      setCreatorProfile(data)
-    }
-    fetchCreator()
-  }, [channel.created_by])
-
-  const [name, setName] = useState(channel.name || '')
-  const [description, setDescription] = useState(channel.description || '')
+  const [name, setName] = useState(category.name || '')
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState('')
 
@@ -78,14 +73,14 @@ function ChannelSettings({ channel, server, onClose, onDeleted, onUpdated }) {
         : { data: [] }
       setMembers(profileRows || [])
 
-      const { data: permRows } = await supabase.from('channel_permissions').select('*').eq('channel_id', channel.id)
+      const { data: permRows } = await supabase.from('category_permissions').select('*').eq('category_id', category.id)
 
       const defaultRow = permRows?.find((r) => r.member_user_id === null)
       setDefaultPerms(defaultRow || DEFAULT_PERMS)
       setOverrides(permRows?.filter((r) => r.member_user_id !== null) || [])
     }
     fetchData()
-  }, [activeTab, channel.id, server.id])
+  }, [activeTab, category.id, server.id])
 
   const handleSaveGeneral = async (e) => {
     e.preventDefault()
@@ -93,15 +88,15 @@ function ChannelSettings({ channel, server, onClose, onDeleted, onUpdated }) {
     setSaveMessage('')
 
     const { error } = await supabase
-      .from('channels')
-      .update({ name: name.trim().toLowerCase().replace(/\s+/g, '-'), description: description.trim() })
-      .eq('id', channel.id)
+      .from('channel_categories')
+      .update({ name: name.trim() })
+      .eq('id', category.id)
 
     if (error) {
       setSaveMessage(`Error: ${error.message}`)
     } else {
       setSaveMessage('Saved!')
-      onUpdated({ name: name.trim().toLowerCase().replace(/\s+/g, '-'), description: description.trim() })
+      onUpdated({ name: name.trim() })
     }
     setSaving(false)
   }
@@ -110,13 +105,16 @@ function ChannelSettings({ channel, server, onClose, onDeleted, onUpdated }) {
     ? defaultPerms
     : overrides.find((o) => o.member_user_id === selectedKey) || DEFAULT_PERMS
 
+  // Manual "update, then insert if nothing existed" — .upsert()'s onConflict
+  // can't target our partial unique indexes (they only apply WHERE
+  // member_user_id IS NULL / IS NOT NULL), so this sidesteps that entirely.
   const savePermissionRow = async (memberUserId, updated) => {
-    let query = supabase.from('channel_permissions').update(updated).eq('channel_id', channel.id)
+    let query = supabase.from('category_permissions').update(updated).eq('category_id', category.id)
     query = memberUserId === null ? query.is('member_user_id', null) : query.eq('member_user_id', memberUserId)
     const { data: updatedRows } = await query.select()
 
     if (!updatedRows || updatedRows.length === 0) {
-      await supabase.from('channel_permissions').insert({ channel_id: channel.id, member_user_id: memberUserId, ...updated })
+      await supabase.from('category_permissions').insert({ category_id: category.id, member_user_id: memberUserId, ...updated })
     }
   }
 
@@ -136,20 +134,20 @@ function ChannelSettings({ channel, server, onClose, onDeleted, onUpdated }) {
 
   const handleAddOverride = async (userId) => {
     await savePermissionRow(userId, DEFAULT_PERMS)
-    setOverrides((current) => [...current, { channel_id: channel.id, member_user_id: userId, ...DEFAULT_PERMS }])
+    setOverrides((current) => [...current, { category_id: category.id, member_user_id: userId, ...DEFAULT_PERMS }])
     setSelectedKey(userId)
     setShowAddOverride(false)
   }
 
   const handleRemoveOverride = async (userId) => {
-    await supabase.from('channel_permissions').delete().eq('channel_id', channel.id).eq('member_user_id', userId)
+    await supabase.from('category_permissions').delete().eq('category_id', category.id).eq('member_user_id', userId)
     setOverrides((current) => current.filter((o) => o.member_user_id !== userId))
     setSelectedKey(DEFAULT_KEY)
   }
 
   const handleDelete = () => {
-    if (window.confirm(`Delete #${channel.name}? This will also delete all its messages. This cannot be undone.`)) {
-      onDeleted(channel.id)
+    if (window.confirm(`Delete "${category.name}"? Channels inside will become uncategorized. This cannot be undone.`)) {
+      onDeleted(category.id)
       onClose()
     }
   }
@@ -161,7 +159,7 @@ function ChannelSettings({ channel, server, onClose, onDeleted, onUpdated }) {
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 text-gray-900">
       <div className="bg-white rounded-lg shadow-lg w-[700px] h-[80vh] flex overflow-hidden">
         <div className="w-48 bg-gray-100 p-4 flex flex-col">
-          <h2 className="text-xs font-semibold text-gray-400 uppercase mb-2 truncate"># {channel.name}</h2>
+          <h2 className="text-xs font-semibold text-gray-400 uppercase mb-2 truncate">{category.name}</h2>
           {TABS.map((tab) => (
             <button
               key={tab.id}
@@ -184,32 +182,12 @@ function ChannelSettings({ channel, server, onClose, onDeleted, onUpdated }) {
           <div className="flex-1 overflow-y-auto p-6">
             {activeTab === 'general' && (
               <form onSubmit={handleSaveGeneral}>
-                {creatorProfile && (
-                  <div className="flex items-center gap-2 mb-4 text-sm text-gray-500">
-                    {creatorProfile.avatar_url ? (
-                      <img src={creatorProfile.avatar_url} alt="Creator" className="w-6 h-6 rounded-full object-cover" />
-                    ) : (
-                      <div className="w-6 h-6 rounded-full bg-gray-300" />
-                    )}
-                    <span>Created by {creatorProfile.display_name || 'a member'}</span>
-                  </div>
-                )}
-
-                <label className="block text-sm font-medium mb-1">Channel Name</label>
+                <label className="block text-sm font-medium mb-1">Category Name</label>
                 <input
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="w-full p-2 mb-4 border rounded"
-                />
-
-                <label className="block text-sm font-medium mb-1">Description</label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={3}
-                  className="w-full p-2 mb-4 border rounded resize-none"
-                  placeholder="What's this channel for?"
                 />
 
                 <button type="submit" disabled={saving} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50">
@@ -224,7 +202,7 @@ function ChannelSettings({ channel, server, onClose, onDeleted, onUpdated }) {
                     onClick={handleDelete}
                     className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 text-sm"
                   >
-                    Delete Channel
+                    Delete Category
                   </button>
                 </div>
               </form>
@@ -324,7 +302,7 @@ function ChannelSettings({ channel, server, onClose, onDeleted, onUpdated }) {
                   </div>
 
                   <p className="text-xs text-gray-400 mt-6">
-                    The server creator can always see and manage everything, regardless of these settings.
+                    Any channel in this category uses these settings by default.
                   </p>
                 </div>
               </div>
@@ -337,4 +315,4 @@ function ChannelSettings({ channel, server, onClose, onDeleted, onUpdated }) {
   )
 }
 
-export default ChannelSettings
+export default CategorySettings

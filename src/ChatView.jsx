@@ -5,6 +5,11 @@ import UserProfileCard from './UserProfileCard'
 import { linkify } from './linkify'
 import ImageLightbox from './ImageLightbox'
 import GifPicker from './GifPicker'
+import PollCreator from './PollCreator'
+import PollMessage from './PollMessage'
+import ChecklistCreator from './ChecklistCreator'
+import ChecklistMessage from './ChecklistMessage'
+import ScheduleMessagePicker from './ScheduleMessagePicker'
 
 // Renders a message's attachment according to its type — an image, a video/audio
 // player, or a document link for PDFs. Images and videos open in a full-screen
@@ -52,7 +57,7 @@ function Attachment({ url, type, name, onExpand }) {
 // plus the input bar for sending new messages (text or file attachments).
 // Editing a message populates this same input bar (Discord-style) instead
 // of turning the message bubble itself into a textarea in place.
-function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSendMessage, handleSendAttachment, handleEditMessage, handleDeleteMessage, formatTime, formatDateLabel, isNewDay, currentUserId, replyCounts, onOpenThread, reactionsMap, onToggleReaction, canManageMessages }) {
+function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSendMessage, handleSendAttachment, handleCreatePoll, handleCreateChecklist, handleEditMessage, handleDeleteMessage, formatTime, formatDateLabel, isNewDay, currentUserId, currentUserEmail, selectedChannelId, replyCounts, onOpenThread, reactionsMap, onToggleReaction, canManageMessages }) {
   const [editingMessage, setEditingMessage] = useState(null) // the message object currently being edited, or null
   const bottomRef = useRef(null) // an invisible marker at the end of the message list we scroll to
   const scrollContainerRef = useRef(null) // the scrollable message list itself, used to measure scroll position
@@ -67,6 +72,9 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
   const [copiedId, setCopiedId] = useState(null) // id of the message whose "Copied!" tooltip is currently showing
   const [expandedAttachment, setExpandedAttachment] = useState(null) // { url, type } currently shown in the lightbox
   const [showGifPicker, setShowGifPicker] = useState(false)
+  const [showPollCreator, setShowPollCreator] = useState(false)
+  const [showChecklistCreator, setShowChecklistCreator] = useState(false)
+  const [showSchedulePicker, setShowSchedulePicker] = useState(false)
 
   // Smart auto-scroll: only scrolls down when a message is genuinely ADDED
   // (not edited or deleted — those don't change the message count), and only
@@ -249,6 +257,9 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
                           onExpand={(url, type) => setExpandedAttachment({ url, type })}
                         />
                       )}
+
+                       <PollMessage messageId={msg.id} currentUserId={currentUserId} />
+                       <ChecklistMessage messageId={msg.id} currentUserId={currentUserId} profilesMap={profilesMap} />
 
                       {/* ---- HOVER ACTIONS: React / Reply / Edit / Delete — positioned to the RIGHT of the bubble ---- */}
                       <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 flex items-center gap-3 opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity bg-white shadow-md rounded-full px-3 py-1.5 whitespace-nowrap z-10">
@@ -470,6 +481,79 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
                 </button>
                 {showGifPicker && (
                   <GifPicker onSelect={handleSendGif} onClose={() => setShowGifPicker(false)} />
+                )}
+              </div>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowPollCreator(!showPollCreator)}
+                  className="mb-1 text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0"
+                  title="Create a poll"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="20" x2="18" y2="10" />
+                    <line x1="12" y1="20" x2="12" y2="4" />
+                    <line x1="6" y1="20" x2="6" y2="14" />
+                  </svg>
+                </button>
+                {showPollCreator && (
+                  <PollCreator
+                    onCreate={(pollData) => {
+                      handleCreatePoll(pollData)
+                      setShowPollCreator(false)
+                      setShowActions(false)
+                    }}
+                    onClose={() => setShowPollCreator(false)}
+                  />
+                )}
+              </div>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowChecklistCreator(!showChecklistCreator)}
+                  className="mb-1 text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0"
+                  title="Create a checklist"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 11l3 3L22 4" />
+                    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                  </svg>
+                </button>
+                {showChecklistCreator && (
+                  <ChecklistCreator
+                    onCreate={(checklistData) => {
+                      handleCreateChecklist(checklistData)
+                      setShowChecklistCreator(false)
+                      setShowActions(false)
+                    }}
+                    onClose={() => setShowChecklistCreator(false)}
+                  />
+                )}
+              </div>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowSchedulePicker(!showSchedulePicker)}
+                  className="mb-1 text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0"
+                  title="Schedule a message"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
+                  </svg>
+                </button>
+                {showSchedulePicker && (
+                  <ScheduleMessagePicker
+                    messageText={newMessage}
+                    channelId={selectedChannelId}
+                    currentUserId={currentUserId}
+                    currentUserEmail={currentUserEmail}
+                    onScheduled={() => {
+                      setNewMessage('')
+                      setShowActions(false)
+                    }}
+                    onClose={() => setShowSchedulePicker(false)}
+                  />
                 )}
               </div>
             </>

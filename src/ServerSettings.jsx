@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabaseClient'
 import ChannelSettings from './ChannelSettings'
+import CategorySettings from './CategorySettings'
 
 const TABS = [
   { id: 'general', label: 'General' },
-  { id: 'channels', label: 'Channels' },
   { id: 'members', label: 'Members' },
   { id: 'invites', label: 'Invites' },
+  { id: 'channels', label: 'Channels' },
+  { id: 'categories', label: 'Categories' },
 ]
 
 const PERMISSIONS = [
@@ -67,6 +69,10 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServ
   const [newChannelName, setNewChannelName] = useState('')
   const [editingChannel, setEditingChannel] = useState(null)
 
+  const [categories, setCategories] = useState([])
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [editingCategory, setEditingCategory] = useState(null)
+
   const [members, setMembers] = useState([])
   const [openMemberMenu, setOpenMemberMenu] = useState(null)
 
@@ -101,6 +107,41 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServ
     }
     fetchChannels()
   }, [activeTab, server.id])
+
+  useEffect(() => {
+    if (activeTab !== 'categories') return
+    const fetchCategories = async () => {
+      const { data } = await supabase
+        .from('channel_categories')
+        .select('*')
+        .eq('server_id', server.id)
+        .order('position', { ascending: true })
+      setCategories(data || [])
+    }
+    fetchCategories()
+  }, [activeTab, server.id])
+
+  const handleCreateCategory = async (e) => {
+    e.preventDefault()
+    if (!newCategoryName.trim()) return
+
+    const nextPosition = categories.length > 0 ? Math.max(...categories.map((c) => c.position || 0)) + 1 : 1
+
+    const { data, error } = await supabase
+      .from('channel_categories')
+      .insert({
+        name: newCategoryName.trim(),
+        position: nextPosition,
+        server_id: server.id,
+      })
+      .select()
+      .single()
+
+    if (!error && data) {
+      setCategories((current) => [...current, data])
+      setNewCategoryName('')
+    }
+  }
 
   const handleCreateChannel = async (e) => {
     e.preventDefault()
@@ -420,6 +461,46 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServ
               </div>
             )}
 
+            {activeTab === 'categories' && (
+              <div>
+                {categories.length === 0 && (
+                  <p className="text-sm text-gray-400 mb-4">No categories yet.</p>
+                )}
+                <div className="space-y-1 mb-6">
+                  {categories.map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => canManageChannels && setEditingCategory(cat)}
+                      className={`w-full flex justify-between items-center p-2 rounded text-left ${
+                        canManageChannels ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'
+                      }`}
+                    >
+                      <span className="text-sm font-medium">{cat.name}</span>
+                      {canManageChannels && <span className="text-gray-300">›</span>}
+                    </button>
+                  ))}
+                </div>
+
+                {canManageChannels ? (
+                  <form onSubmit={handleCreateCategory} className="flex gap-2 pt-4 border-t">
+                    <input
+                      type="text"
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      placeholder="Category name"
+                      className="flex-1 border rounded p-2 text-sm"
+                    />
+                    <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 whitespace-nowrap">
+                      + Category
+                    </button>
+                  </form>
+                ) : (
+                  <p className="text-sm text-gray-400">You don't have permission to create categories.</p>
+                )}
+              </div>
+            )}
+
             {activeTab === 'members' && (
               <div>
                 <p className="text-sm text-gray-500 mb-4">{members.length} member{members.length === 1 ? '' : 's'}</p>
@@ -558,12 +639,37 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServ
           channel={editingChannel}
           server={server}
           onClose={() => setEditingChannel(null)}
-          onDeleted={(channelId) => {
+          onDeleted={async (channelId) => {
+            // ChannelSettings only calls this after its own confirm() dialog —
+            // it doesn't perform the actual database delete itself, so we do
+            // the real delete here (mirrors ChannelSidebar's handleChannelDeleted)
+            await supabase.from('messages').delete().eq('channel_id', channelId)
+            await supabase.from('channels').delete().eq('id', channelId)
             setChannels((current) => current.filter((c) => c.id !== channelId))
           }}
           onUpdated={(updates) => {
             setChannels((current) =>
               current.map((c) => (c.id === editingChannel.id ? { ...c, ...updates } : c))
+            )
+          }}
+        />
+      )}
+
+      {editingCategory && (
+        <CategorySettings
+          category={editingCategory}
+          server={server}
+          onClose={() => setEditingCategory(null)}
+          onDeleted={async (categoryId) => {
+            // Same story — CategorySettings doesn't delete from the DB itself.
+            // Channels inside become uncategorized automatically via the
+            // ON DELETE SET NULL foreign key, no extra cleanup needed here.
+            await supabase.from('channel_categories').delete().eq('id', categoryId)
+            setCategories((current) => current.filter((c) => c.id !== categoryId))
+          }}
+          onUpdated={(updates) => {
+            setCategories((current) =>
+              current.map((c) => (c.id === editingCategory.id ? { ...c, ...updates } : c))
             )
           }}
         />

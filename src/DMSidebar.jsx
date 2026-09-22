@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
 
 // DMSidebar lists the current user's DM conversations (most recent first),
-// with a picker to start a new one. Mirrors ChannelSidebar's slot in the layout.
+// with a picker to start a new one, and a blue unread dot for conversations
+// with new messages since this user last opened them.
 function DMSidebar({ currentUserId, selectedConversation, onSelectConversation, onStartDM }) {
-  const [conversations, setConversations] = useState([]) // [{ ...conversation, otherProfile }]
+  const [conversations, setConversations] = useState([])
+  const [unreadConversationIds, setUnreadConversationIds] = useState(new Set())
   const [showNewMessage, setShowNewMessage] = useState(false)
   const [searchText, setSearchText] = useState('')
   const [searchResults, setSearchResults] = useState([])
@@ -18,6 +20,7 @@ function DMSidebar({ currentUserId, selectedConversation, onSelectConversation, 
 
     if (!convoRows || convoRows.length === 0) {
       setConversations([])
+      setUnreadConversationIds(new Set())
       return
     }
 
@@ -36,15 +39,41 @@ function DMSidebar({ currentUserId, selectedConversation, onSelectConversation, 
         otherProfile: profileMap[c.user_a === currentUserId ? c.user_b : c.user_a],
       }))
     )
+
+    const convoIds = convoRows.map((c) => c.id)
+    const { data: readRows } = await supabase
+      .from('dm_reads')
+      .select('conversation_id, last_read_at')
+      .eq('user_id', currentUserId)
+      .in('conversation_id', convoIds)
+
+    const readMap = {}
+    readRows?.forEach((r) => { readMap[r.conversation_id] = r.last_read_at })
+
+    const unread = new Set()
+    for (const convo of convoRows) {
+      const { data: latestMessage } = await supabase
+        .from('dm_messages')
+        .select('created_at, sender_id')
+        .eq('conversation_id', convo.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (!latestMessage) continue
+      if (latestMessage.sender_id === currentUserId) continue
+
+      const lastRead = readMap[convo.id]
+      if (!lastRead || new Date(latestMessage.created_at) > new Date(lastRead)) {
+        unread.add(convo.id)
+      }
+    }
+    setUnreadConversationIds(unread)
   }
 
   useEffect(() => {
     fetchConversations()
 
-    // Broad subscriptions (no filter) since Postgres RLS filters here would need
-    // an OR across two columns, which realtime filters don't support directly —
-    // simplest reliable approach is to refetch on any change, same pattern used
-    // elsewhere in this app for smaller tables.
     const channel = supabase
       .channel('dm-sidebar')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_conversations' }, fetchConversations)
@@ -53,6 +82,17 @@ function DMSidebar({ currentUserId, selectedConversation, onSelectConversation, 
 
     return () => supabase.removeChannel(channel)
   }, [currentUserId])
+
+  const markConversationRead = async (conversationId) => {
+    setUnreadConversationIds((current) => {
+      const updated = new Set(current)
+      updated.delete(conversationId)
+      return updated
+    })
+    await supabase
+      .from('dm_reads')
+      .upsert({ user_id: currentUserId, conversation_id: conversationId, last_read_at: new Date().toISOString() }, { onConflict: 'user_id,conversation_id' })
+  }
 
   useEffect(() => {
     if (!showNewMessage || !searchText.trim()) {
@@ -124,7 +164,7 @@ function DMSidebar({ currentUserId, selectedConversation, onSelectConversation, 
         {conversations.map((c) => (
           <button
             key={c.id}
-            onClick={() => onSelectConversation(c)}
+            onClick={() => { onSelectConversation(c); markConversationRead(c.id) }}
             className={`w-full flex items-center gap-2 p-2 rounded text-left ${
               selectedConversation?.id === c.id ? 'bg-gray-700 text-white' : 'hover:bg-gray-700'
             }`}
@@ -134,7 +174,10 @@ function DMSidebar({ currentUserId, selectedConversation, onSelectConversation, 
             ) : (
               <div className="w-8 h-8 rounded-full bg-gray-500" />
             )}
-            <span className="text-sm truncate">{c.otherProfile?.display_name || 'A member'}</span>
+            <span className="text-sm truncate flex-1">{c.otherProfile?.display_name || 'A member'}</span>
+            {unreadConversationIds.has(c.id) && (
+              <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
+            )}
           </button>
         ))}
       </div>
