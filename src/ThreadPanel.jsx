@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import ReactionPicker from './ReactionPicker'
+import ReactorList from './ReactorList'
 import { linkify } from './linkify'
 
 // ThreadPanel is a slide-out panel showing a parent message and all its
@@ -10,6 +11,7 @@ function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply
   const [replyText, setReplyText] = useState('')
   const [editingReply, setEditingReply] = useState(null) // the reply object currently being edited, or null
   const [copiedId, setCopiedId] = useState(null)
+  const [openReactorList, setOpenReactorList] = useState(null)
   const textareaRef = useRef(null)
 
   const parentProfile = profilesMap[parentMessage.user_id]
@@ -61,15 +63,25 @@ function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply
 
   // Groups a message's raw reaction rows into { emoji: { count, reactedByMe } },
   // same logic as ChatView, so reply reactions render as pills too
-  const getGroupedReactions = (messageId) => {
+
+    const getGroupedReactions = (messageId) => {
     const reactions = reactionsMap[messageId] || []
     const grouped = {}
     reactions.forEach((r) => {
-      if (!grouped[r.emoji]) grouped[r.emoji] = { count: 0, reactedByMe: false }
+      if (!grouped[r.emoji]) grouped[r.emoji] = { count: 0, reactedByMe: false, userIds: [] }
       grouped[r.emoji].count += 1
+      grouped[r.emoji].userIds.push(r.user_id)
       if (r.user_id === currentUserId) grouped[r.emoji].reactedByMe = true
     })
     return grouped
+  }
+
+  const getReactorNames = (userIds) => {
+    const names = userIds.map((id) =>
+      id === currentUserId ? 'You' : (profilesMap[id]?.display_name || 'Someone')
+    )
+    if (names.length <= 3) return names.join(', ')
+    return `${names.slice(0, 3).join(', ')}, and ${names.length - 3} more`
   }
 
   return (
@@ -201,10 +213,19 @@ function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply
                   {/* ---- REACTION PILLS ---- */}
                   {Object.keys(groupedReactions).length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-1">
-                      {Object.entries(groupedReactions).map(([emoji, { count, reactedByMe }]) => (
+                      {Object.entries(groupedReactions).map(([emoji, { count, reactedByMe, userIds }]) => (
                         <button
                           key={emoji}
                           onClick={() => onToggleReaction(reply.id, emoji)}
+                          onContextMenu={(e) => {
+                            e.preventDefault()
+                            setOpenReactorList({
+                              emoji,
+                              names: userIds.map((id) => (id === currentUserId ? 'You' : (profilesMap[id]?.display_name || 'Someone'))),
+                              anchorPosition: { x: e.clientX, y: e.clientY },
+                            })
+                          }}
+                          title={getReactorNames(userIds)}
                           className={`text-xs px-2 py-0.5 rounded-full border flex items-center gap-1 ${
                             reactedByMe
                               ? 'bg-blue-100 border-blue-400 text-blue-700'
@@ -223,6 +244,15 @@ function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply
           )
         })}
       </div>
+
+      {openReactorList && (
+        <ReactorList
+          emoji={openReactorList.emoji}
+          names={openReactorList.names}
+          anchorPosition={openReactorList.anchorPosition}
+          onClose={() => setOpenReactorList(null)}
+        />
+      )}
 
       {/* ---- REPLY INPUT ---- */}
       <div>

@@ -6,6 +6,8 @@ function ChecklistCreator({ onCreate, onClose }) {
   const [title, setTitle] = useState('')
   const [items, setItems] = useState([''])
   const pickerRef = useRef(null)
+  const itemRefs = useRef([])
+  const [focusIndex, setFocusIndex] = useState(null) // set right after adding an item via Shift+Enter, so we can focus it once it exists
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -23,6 +25,25 @@ function ChecklistCreator({ onCreate, onClose }) {
 
   const addItem = () => {
     setItems((current) => [...current, ''])
+  }
+
+  // After a new item is added (via the button OR Shift+Enter), focus it once it's actually rendered
+  useEffect(() => {
+    if (focusIndex === null) return
+    itemRefs.current[focusIndex]?.focus()
+    setFocusIndex(null)
+  }, [items, focusIndex])
+
+  const handleItemKeyDown = (e, index) => {
+    if (e.key === 'Enter' && e.shiftKey) {
+      e.preventDefault()
+      if (index === items.length - 1) {
+        addItem()
+        setFocusIndex(index + 1)
+      } else {
+        itemRefs.current[index + 1]?.focus()
+      }
+    }
   }
 
   const removeItem = (index) => {
@@ -57,9 +78,11 @@ function ChecklistCreator({ onCreate, onClose }) {
           {items.map((item, index) => (
             <div key={index} className="flex gap-2">
               <input
+                ref={(el) => (itemRefs.current[index] = el)}
                 type="text"
                 value={item}
                 onChange={(e) => updateItem(index, e.target.value)}
+                onKeyDown={(e) => handleItemKeyDown(e, index)}
                 placeholder={`Item ${index + 1}`}
                 className="flex-1 border rounded p-2 text-sm"
               />

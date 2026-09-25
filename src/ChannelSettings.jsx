@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabaseClient'
 
-const TABS = [
+const ALL_TABS = [
   { id: 'general', label: 'General' },
   { id: 'permissions', label: 'Permissions' },
 ]
@@ -37,9 +37,10 @@ function ToggleSwitch({ checked, onChange }) {
   )
 }
 
-function ChannelSettings({ channel, server, onClose, onDeleted, onUpdated }) {
+function ChannelSettings({ channel, server, canManageChannels, onClose, onDeleted, onUpdated }) {
   const [activeTab, setActiveTab] = useState('general')
   const [creatorProfile, setCreatorProfile] = useState(null)
+  const [isMuted, setIsMuted] = useState(false)
 
   useEffect(() => {
     if (!channel.created_by) return
@@ -49,6 +50,36 @@ function ChannelSettings({ channel, server, onClose, onDeleted, onUpdated }) {
     }
     fetchCreator()
   }, [channel.created_by])
+
+  useEffect(() => {
+    const fetchMuteStatus = async () => {
+      const { data } = await supabase.auth.getUser()
+      const currentUserId = data?.user?.id
+      if (!currentUserId) return
+
+      const { data: muteRow } = await supabase
+        .from('channel_mutes')
+        .select('id')
+        .eq('channel_id', channel.id)
+        .eq('user_id', currentUserId)
+        .maybeSingle()
+      setIsMuted(!!muteRow)
+    }
+    fetchMuteStatus()
+  }, [channel.id])
+
+  const handleToggleMute = async () => {
+    const { data } = await supabase.auth.getUser()
+    const currentUserId = data?.user?.id
+    if (!currentUserId) return
+
+    if (isMuted) {
+      await supabase.from('channel_mutes').delete().eq('channel_id', channel.id).eq('user_id', currentUserId)
+    } else {
+      await supabase.from('channel_mutes').insert({ channel_id: channel.id, user_id: currentUserId })
+    }
+    setIsMuted(!isMuted)
+  }
 
   const [name, setName] = useState(channel.name || '')
   const [description, setDescription] = useState(channel.description || '')
@@ -162,7 +193,7 @@ function ChannelSettings({ channel, server, onClose, onDeleted, onUpdated }) {
       <div className="bg-white rounded-lg shadow-lg w-[700px] h-[80vh] flex overflow-hidden">
         <div className="w-48 bg-gray-100 p-4 flex flex-col">
           <h2 className="text-xs font-semibold text-gray-400 uppercase mb-2 truncate"># {channel.name}</h2>
-          {TABS.map((tab) => (
+          {ALL_TABS.filter((tab) => canManageChannels || tab.id === 'general').map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
@@ -177,56 +208,82 @@ function ChannelSettings({ channel, server, onClose, onDeleted, onUpdated }) {
 
         <div className="flex-1 flex flex-col">
           <div className="flex justify-between items-center p-4 border-b">
-            <h2 className="font-bold">{TABS.find((t) => t.id === activeTab)?.label}</h2>
+            <h2 className="font-bold">{ALL_TABS.find((t) => t.id === activeTab)?.label}</h2>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
           </div>
 
           <div className="flex-1 overflow-y-auto p-6">
             {activeTab === 'general' && (
               <form onSubmit={handleSaveGeneral}>
-                {creatorProfile && (
-                  <div className="flex items-center gap-2 mb-4 text-sm text-gray-500">
-                    {creatorProfile.avatar_url ? (
-                      <img src={creatorProfile.avatar_url} alt="Creator" className="w-6 h-6 rounded-full object-cover" />
-                    ) : (
-                      <div className="w-6 h-6 rounded-full bg-gray-300" />
-                    )}
-                    <span>Created by {creatorProfile.display_name || 'a member'}</span>
-                  </div>
+                {!canManageChannels && (
+                  <p className="text-lg font-semibold mb-4"># {channel.name}</p>
                 )}
 
-                <label className="block text-sm font-medium mb-1">Channel Name</label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full p-2 mb-4 border rounded"
-                />
+                {canManageChannels && (
+                  <>
+                    {creatorProfile && (
+                      <div className="flex items-center gap-2 mb-4 text-sm text-gray-500">
+                        {creatorProfile.avatar_url ? (
+                          <img src={creatorProfile.avatar_url} alt="Creator" className="w-6 h-6 rounded-full object-cover" />
+                        ) : (
+                          <div className="w-6 h-6 rounded-full bg-gray-300" />
+                        )}
+                        <span>Created by {creatorProfile.display_name || 'a member'}</span>
+                      </div>
+                    )}
 
-                <label className="block text-sm font-medium mb-1">Description</label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={3}
-                  className="w-full p-2 mb-4 border rounded resize-none"
-                  placeholder="What's this channel for?"
-                />
+                    <label className="block text-sm font-medium mb-1">Channel Name</label>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="w-full p-2 mb-4 border rounded"
+                    />
 
-                <button type="submit" disabled={saving} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50">
-                  {saving ? 'Saving...' : 'Save Changes'}
-                </button>
-                {saveMessage && <p className="text-sm text-gray-500 mt-2">{saveMessage}</p>}
+                    <label className="block text-sm font-medium mb-1">Description</label>
+                    <textarea
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      rows={3}
+                      className="w-full p-2 mb-4 border rounded resize-none"
+                      placeholder="What's this channel for?"
+                    />
 
-                <div className="mt-8 pt-6 border-t">
-                  <h3 className="text-sm font-semibold text-red-600 mb-2">Danger Zone</h3>
+                    <button type="submit" disabled={saving} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50">
+                      {saving ? 'Saving...' : 'Save Changes'}
+                    </button>
+                    {saveMessage && <p className="text-sm text-gray-500 mt-2">{saveMessage}</p>}
+                  </>
+                )}
+
+                <div className="mt-8 pt-6 border-t flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">Mute this channel</p>
+                    <p className="text-xs text-gray-400">Stops notifications for this channel.</p>
+                  </div>
                   <button
                     type="button"
-                    onClick={handleDelete}
-                    className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 text-sm"
+                    onClick={handleToggleMute}
+                    className={`relative inline-flex h-6 w-10 shrink-0 items-center rounded-full transition-colors ${
+                      isMuted ? 'bg-gray-400' : 'bg-gray-200'
+                    }`}
                   >
-                    Delete Channel
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${isMuted ? 'translate-x-5' : 'translate-x-1'}`} />
                   </button>
                 </div>
+
+                {canManageChannels && (
+                  <div className="mt-6 pt-6 border-t">
+                    <h3 className="text-sm font-semibold text-red-600 mb-2">Danger Zone</h3>
+                    <button
+                      type="button"
+                      onClick={handleDelete}
+                      className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 text-sm"
+                    >
+                      Delete Channel
+                    </button>
+                  </div>
+                )}
               </form>
             )}
 

@@ -14,6 +14,7 @@ import CalendarPage from './CalendarPage'
 import DMSidebar from './DMSidebar'
 import DMChatView from './DMChatview'
 import NotificationBell from './NotificationBell'
+import ChannelViewerCount from './ChannelViewerCount'
 
 function App() {
   // ---- AUTH STATE ----
@@ -770,8 +771,8 @@ function App() {
                 </button>
               )}
               <PageNav currentPage={currentPage} setCurrentPage={setCurrentPage} />
-              {currentPage === 'chat' && (
-                <span className="text-gray-400 text-sm"># {selectedChannel?.name || '...'}</span>
+              {currentPage === 'chat' && selectedChannel && selectedServer && (
+                <ChannelViewerCount channel={selectedChannel} server={selectedServer} />
               )}
               {currentPage === 'dm' && (
                 <span className="text-gray-400 text-sm">{conversationOtherProfile?.display_name || '...'}</span>

@@ -30,7 +30,17 @@ function CalendarPage({ selectedServer, isAdmin }) {
       setError(fnError.message)
     } else {
       setIsConnected(data.connected)
-      const sortedEvents = (data.events || []).sort(
+
+      const now = new Date()
+      const upcomingEvents = (data.events || []).filter((event) => {
+        // Use the event's end time if it has one, otherwise its start time —
+        // this way an event that's still IN PROGRESS today doesn't disappear
+        // partway through, only once it's fully over
+        const relevantTime = new Date(event.end || event.start)
+        return relevantTime >= now
+      })
+
+      const sortedEvents = upcomingEvents.sort(
         (a, b) => new Date(a.start) - new Date(b.start)
       )
       setEvents(sortedEvents)

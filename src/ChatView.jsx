@@ -10,6 +10,7 @@ import PollMessage from './PollMessage'
 import ChecklistCreator from './ChecklistCreator'
 import ChecklistMessage from './ChecklistMessage'
 import ScheduleMessagePicker from './ScheduleMessagePicker'
+import ReactorList from './ReactorList'
 
 // Renders a message's attachment according to its type — an image, a video/audio
 // player, or a document link for PDFs. Images and videos open in a full-screen
@@ -75,6 +76,7 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
   const [showPollCreator, setShowPollCreator] = useState(false)
   const [showChecklistCreator, setShowChecklistCreator] = useState(false)
   const [showSchedulePicker, setShowSchedulePicker] = useState(false)
+  const [openReactorList, setOpenReactorList] = useState(null) // { emoji, names, anchorPosition } for the right-clicked pill
 
   // Smart auto-scroll: only scrolls down when a message is genuinely ADDED
   // (not edited or deleted — those don't change the message count), and only
@@ -194,11 +196,22 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
     const reactions = reactionsMap[messageId] || []
     const grouped = {}
     reactions.forEach((r) => {
-      if (!grouped[r.emoji]) grouped[r.emoji] = { count: 0, reactedByMe: false }
+      if (!grouped[r.emoji]) grouped[r.emoji] = { count: 0, reactedByMe: false, userIds: [] }
       grouped[r.emoji].count += 1
+      grouped[r.emoji].userIds.push(r.user_id)
       if (r.user_id === currentUserId) grouped[r.emoji].reactedByMe = true
     })
     return grouped
+  }
+
+  // Turns a list of user ids into a readable "Alex, Jordan, and 3 others" string,
+  // using names from profilesMap where we have them
+  const getReactorNames = (userIds) => {
+    const names = userIds.map((id) =>
+      id === currentUserId ? 'You' : (profilesMap[id]?.display_name || 'Someone')
+    )
+    if (names.length <= 3) return names.join(', ')
+    return `${names.slice(0, 3).join(', ')}, and ${names.length - 3} more`
   }
 
   return (
@@ -336,10 +349,19 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
 
                     {Object.keys(groupedReactions).length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1">
-                        {Object.entries(groupedReactions).map(([emoji, { count, reactedByMe }]) => (
+                        {Object.entries(groupedReactions).map(([emoji, { count, reactedByMe, userIds }]) => (
                           <button
                             key={emoji}
                             onClick={() => onToggleReaction(msg.id, emoji)}
+                            onContextMenu={(e) => {
+                              e.preventDefault()
+                              setOpenReactorList({
+                                emoji,
+                                names: userIds.map((id) => (id === currentUserId ? 'You' : (profilesMap[id]?.display_name || 'Someone'))),
+                                anchorPosition: { x: e.clientX, y: e.clientY },
+                              })
+                            }}
+                            title={getReactorNames(userIds)}
                             className={`text-xs px-2 py-0.5 rounded-full border flex items-center gap-1 ${
                               reactedByMe
                                 ? 'bg-blue-100 border-blue-400 text-blue-700'
@@ -369,6 +391,15 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
         })}
         <div ref={bottomRef} />
       </div>
+
+      {openReactorList && (
+        <ReactorList
+          emoji={openReactorList.emoji}
+          names={openReactorList.names}
+          anchorPosition={openReactorList.anchorPosition}
+          onClose={() => setOpenReactorList(null)}
+        />
+      )}
 
       {viewingProfile && (
         <UserProfileCard
@@ -457,8 +488,11 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
             </svg>
           </button>
 
-          {showActions && (
-            <>
+          <div
+            className={`flex items-center gap-2 overflow-hidden transition-all duration-300 ease-in-out ${
+              showActions ? 'max-w-[240px] opacity-100' : 'max-w-0 opacity-0'
+            }`}
+          >
               <button
                 type="button"
                 onClick={() => {
@@ -556,8 +590,7 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
                   />
                 )}
               </div>
-            </>
-          )}
+                   </div>
 
           <textarea
             ref={textareaRef}

@@ -3,6 +3,8 @@ import { supabase } from './supabaseClient'
 import attachIcon from './assets/icons8-add-file-50.png'
 import { linkify } from './linkify'
 import ImageLightbox from './ImageLightbox'
+import ReactionPicker from './ReactionPicker'
+import ReactorList from './ReactorList'
 
 // Renders a message's attachment according to its type — identical to ChatView's version
 function Attachment({ url, type, name, onExpand }) {
@@ -53,6 +55,8 @@ function DMChatView({ conversation, currentUserId, otherProfile, myProfile }) {
   const [editingMessage, setEditingMessage] = useState(null)
   const [copiedId, setCopiedId] = useState(null)
   const [expandedAttachment, setExpandedAttachment] = useState(null)
+  const [reactionsMap, setReactionsMap] = useState({}) // { messageId: [{ emoji, user_id }, ...] }
+  const [openReactorList, setOpenReactorList] = useState(null)
   const [pendingFile, setPendingFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState(null)
 
@@ -81,6 +85,33 @@ function DMChatView({ conversation, currentUserId, otherProfile, myProfile }) {
       .subscribe()
 
     return () => supabase.removeChannel(channel)
+  }, [conversation])
+
+  // Load reactions for this conversation's messages, kept live via realtime
+  useEffect(() => {
+    if (!conversation) return
+
+    const fetchReactions = async () => {
+      const { data } = await supabase
+        .from('dm_message_reactions')
+        .select('message_id, emoji, user_id')
+      // Fetches all rows (same lightweight pattern used for channel reactions) —
+      // RLS already restricts this to reactions on messages in conversations this user is part of
+      const map = {}
+      data?.forEach((r) => {
+        if (!map[r.message_id]) map[r.message_id] = []
+        map[r.message_id].push(r)
+      })
+      setReactionsMap(map)
+    }
+    fetchReactions()
+
+    const reactionChannel = supabase
+      .channel(`dm-reactions-${conversation.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_message_reactions' }, fetchReactions)
+      .subscribe()
+
+    return () => supabase.removeChannel(reactionChannel)
   }, [conversation])
 
   useEffect(() => {
@@ -199,6 +230,38 @@ function DMChatView({ conversation, currentUserId, otherProfile, myProfile }) {
     }
   }
 
+  
+  const handleToggleReaction = async (messageId, emoji) => {
+    const existing = reactionsMap[messageId]?.find((r) => r.emoji === emoji && r.user_id === currentUserId)
+
+    if (existing) {
+      await supabase.from('dm_message_reactions').delete().eq('message_id', messageId).eq('user_id', currentUserId).eq('emoji', emoji)
+    } else {
+      await supabase.from('dm_message_reactions').insert({ message_id: messageId, user_id: currentUserId, emoji })
+    }
+  }
+
+  const getGroupedReactions = (messageId) => {
+    const reactions = reactionsMap[messageId] || []
+    const grouped = {}
+    reactions.forEach((r) => {
+      if (!grouped[r.emoji]) grouped[r.emoji] = { count: 0, reactedByMe: false, userIds: [] }
+      grouped[r.emoji].count += 1
+      grouped[r.emoji].userIds.push(r.user_id)
+      if (r.user_id === currentUserId) grouped[r.emoji].reactedByMe = true
+    })
+    return grouped
+  }
+
+  const getReactorNames = (userIds) => {
+    const names = userIds.map((id) => {
+      if (id === currentUserId) return 'You'
+      return otherProfile?.display_name || 'Someone' // only one other person in a DM
+    })
+    if (names.length <= 3) return names.join(', ')
+    return `${names.slice(0, 3).join(', ')}, and ${names.length - 3} more`
+  }
+
   const formatTime = (timestamp) => new Date(timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 
   return (
@@ -209,6 +272,7 @@ function DMChatView({ conversation, currentUserId, otherProfile, myProfile }) {
           const isOwn = msg.sender_id === currentUserId
           const senderProfile = isOwn ? null : otherProfile
           const isBeingEdited = editingMessage?.id === msg.id
+          const groupedReactions = getGroupedReactions(msg.id)
 
           return (
             <div key={msg.id} className="flex items-start gap-3">
@@ -249,8 +313,9 @@ function DMChatView({ conversation, currentUserId, otherProfile, myProfile }) {
                       />
                     )}
 
-                    {/* ---- HOVER ACTIONS: Edit / Delete (own messages only — no reactions/reply yet in DMs) ---- */}
-                    <div className={`absolute left-full top-1/2 -translate-y-1/2 ml-2 flex items-center gap-3 opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity bg-white shadow-md rounded-full px-3 py-1.5 whitespace-nowrap z-10 ${isOwn ? '' : 'hidden'}`}>
+                    {/* ---- HOVER ACTIONS: React (everyone) / Edit / Delete (own messages only) ---- */}
+                    <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 flex items-center gap-3 opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity bg-white shadow-md rounded-full px-3 py-1.5 whitespace-nowrap z-10">
+                      <ReactionPicker onSelect={(emoji) => handleToggleReaction(msg.id, emoji)} />
                       <div className="relative">
                         <button
                           onClick={() => handleCopy(msg.id, msg.content)}
@@ -306,6 +371,34 @@ function DMChatView({ conversation, currentUserId, otherProfile, myProfile }) {
                       )}
                     </div>
                   </div>
+
+                  {Object.keys(groupedReactions).length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {Object.entries(groupedReactions).map(([emoji, { count, reactedByMe, userIds }]) => (
+                        <button
+                          key={emoji}
+                          onClick={() => handleToggleReaction(msg.id, emoji)}
+                          onContextMenu={(e) => {
+                            e.preventDefault()
+                            setOpenReactorList({
+                              emoji,
+                              names: userIds.map((id) => (id === currentUserId ? 'You' : (otherProfile?.display_name || 'Someone'))),
+                              anchorPosition: { x: e.clientX, y: e.clientY },
+                            })
+                          }}
+                          title={getReactorNames(userIds)}
+                          className={`text-xs px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                            reactedByMe
+                              ? 'bg-blue-100 border-blue-400 text-blue-700'
+                              : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                          }`}
+                        >
+                          <span>{emoji}</span>
+                          <span>{count}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -319,6 +412,16 @@ function DMChatView({ conversation, currentUserId, otherProfile, myProfile }) {
           url={expandedAttachment.url}
           type={expandedAttachment.type}
           onClose={() => setExpandedAttachment(null)}
+        />
+      )}
+
+      
+      {openReactorList && (
+        <ReactorList
+          emoji={openReactorList.emoji}
+          names={openReactorList.names}
+          anchorPosition={openReactorList.anchorPosition}
+          onClose={() => setOpenReactorList(null)}
         />
       )}
 

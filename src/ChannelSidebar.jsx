@@ -38,7 +38,7 @@ function ChannelItem({ ch, isSelected, onSelect, onOpenSettings, canManageChanne
       onClick={onSelect}
       onContextMenu={(e) => {
         e.preventDefault()
-        if (canManageChannels) onOpenSettings(ch)
+        onOpenSettings(ch)
       }}
       className={`group relative flex items-center justify-between px-3 py-2 rounded cursor-pointer text-sm ${
         isSelected ? 'bg-gray-700 text-white' : 'hover:bg-gray-700'
@@ -49,17 +49,15 @@ function ChannelItem({ ch, isSelected, onSelect, onOpenSettings, canManageChanne
         # {ch.name}
       </span>
 
-      {canManageChannels && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            onOpenSettings(ch)
-          }}
-          className="text-gray-400 hover:text-white px-1 opacity-0 group-hover:opacity-100"
-        >
-          ⋮
-        </button>
-      )}
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          onOpenSettings(ch)
+        }}
+        className="text-gray-400 hover:text-white px-1 opacity-0 group-hover:opacity-100"
+      >
+        ⋮
+      </button>
     </div>
   )
 }
@@ -173,9 +171,19 @@ function ChannelSidebar({ selectedChannel, setSelectedChannel, selectedServer, o
     checkPermission()
   }, [selectedServer, currentUserId])
 
+  const [mutedChannelIds, setMutedChannelIds] = useState(new Set())
+
   const refreshUnreadStatus = async (channelList) => {
     if (!channelList || channelList.length === 0) return
     const channelIds = channelList.map((c) => c.id)
+
+    const { data: muteRows } = await supabase
+      .from('channel_mutes')
+      .select('channel_id')
+      .eq('user_id', currentUserId)
+      .in('channel_id', channelIds)
+    const muted = new Set((muteRows || []).map((m) => m.channel_id))
+    setMutedChannelIds(muted)
 
     const { data: readRows } = await supabase
       .from('channel_reads')
@@ -188,6 +196,8 @@ function ChannelSidebar({ selectedChannel, setSelectedChannel, selectedServer, o
 
     const unread = new Set()
     for (const ch of channelList) {
+      if (muted.has(ch.id)) continue
+
       const { data: latestMessage } = await supabase
         .from('messages')
         .select('created_at, user_id')
@@ -274,12 +284,13 @@ function ChannelSidebar({ selectedChannel, setSelectedChannel, selectedServer, o
         const msg = payload.new
         if (msg.user_id === currentUserId) return
         if (!channels.some((c) => c.id === msg.channel_id)) return
+        if (mutedChannelIds.has(msg.channel_id)) return
         setUnreadChannelIds((current) => new Set(current).add(msg.channel_id))
       })
       .subscribe()
 
     return () => supabase.removeChannel(channel)
-  }, [channels, selectedServer, currentUserId])
+  }, [channels, selectedServer, currentUserId, mutedChannelIds])
 
   const handleChannelDeleted = async (channelId) => {
     await supabase.from('messages').delete().eq('channel_id', channelId)
@@ -445,7 +456,11 @@ function ChannelSidebar({ selectedChannel, setSelectedChannel, selectedServer, o
         <ChannelSettings
           channel={editingChannel}
           server={selectedServer}
-          onClose={() => setEditingChannel(null)}
+          canManageChannels={canManageChannels}
+          onClose={() => {
+            setEditingChannel(null)
+            refreshUnreadStatus(channels) // picks up any mute change made while the modal was open
+          }}
           onDeleted={handleChannelDeleted}
           onUpdated={handleChannelUpdated}
         />

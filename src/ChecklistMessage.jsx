@@ -10,6 +10,8 @@ function ChecklistMessage({ messageId, currentUserId, profilesMap }) {
   const [checkerProfiles, setCheckerProfiles] = useState({})
   const [newItemText, setNewItemText] = useState('')
   const [showAddInput, setShowAddInput] = useState(false)
+  const [editingItemId, setEditingItemId] = useState(null)
+  const [editingItemText, setEditingItemText] = useState('')
 
   const fetchItems = async (checklistId) => {
     const { data: itemRows } = await supabase
@@ -84,6 +86,19 @@ function ChecklistMessage({ messageId, currentUserId, profilesMap }) {
     await supabase.from('checklist_items').delete().eq('id', itemId)
   }
 
+  
+  const startEditingItem = (item) => {
+    setEditingItemId(item.id)
+    setEditingItemText(item.item_text)
+  }
+
+  const saveEditedItem = async () => {
+    if (editingItemText.trim()) {
+      await supabase.from('checklist_items').update({ item_text: editingItemText.trim() }).eq('id', editingItemId)
+    }
+    setEditingItemId(null)
+  }
+
   const checkedCount = items.filter((i) => i.is_checked).length
 
   return (
@@ -107,9 +122,27 @@ function ChecklistMessage({ messageId, currentUserId, profilesMap }) {
               )}
             </button>
             <div className="flex-1 min-w-0">
-              <p className={`text-sm ${item.is_checked ? 'line-through text-gray-400' : 'text-gray-700'}`}>
-                {item.item_text}
-              </p>
+              {editingItemId === item.id ? (
+                <input
+                  type="text"
+                  autoFocus
+                  value={editingItemText}
+                  onChange={(e) => setEditingItemText(e.target.value)}
+                  onBlur={saveEditedItem}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); saveEditedItem() }
+                    if (e.key === 'Escape') setEditingItemId(null)
+                  }}
+                  className="w-full text-sm border rounded px-1 py-0.5"
+                />
+              ) : (
+                <p
+                  onClick={() => !item.is_checked && startEditingItem(item)}
+                  className={`text-sm ${item.is_checked ? 'line-through text-gray-400' : 'text-gray-700 hover:text-blue-600 cursor-pointer'}`}
+                >
+                  {item.item_text}
+                </p>
+              )}
               {item.is_checked && item.checked_by && (
                 <p className="text-[10px] text-gray-400">Checked by {getCheckerName(item.checked_by)}</p>
               )}
