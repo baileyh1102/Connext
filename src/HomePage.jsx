@@ -297,13 +297,11 @@ function HomePage({ selectedServer, session, isAdmin, canEditPosts, canDeletePos
         currentUserName={postsProfilesMap[session.user.id]?.display_name}
       />     
       <div className="relative z-10 max-w-xl mx-auto w-full h-full flex flex-col pb-3 pointer-events-none">
-        <div className="flex flex-col items-center gap-3 mb-4">
+        <div className="flex flex-col gap-3 mb-4">
           <DailyVerseCard />
-          <img src={communityWallHeader} alt="Community Wall" className="h-12 drp-shadow-md pointer-events-none" />
           <button
             onClick={() => setShowComposer(!showComposer)}
-            className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-1.5 rounded-full shadow pointer-events-auto"
-          >
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-2xl shadow pointer-events-auto">
             {showComposer ? 'Cancel' : '+ Post'}
           </button>
         </div>

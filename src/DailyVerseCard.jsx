@@ -26,7 +26,7 @@ export default function DailyVerseCard() {
   if (failed || !verse) return null
 
   return (
-    <div className="pointer-events-auto bg-blue-50 border border-blue-100 rounded-2xl p-5 mb-4 text-center">
+    <div className="pointer-events-auto bg-blue-50 border border-blue-100 rounded-2xl p-5 text-center">
       <p className="text-xs font-semibold uppercase tracking-wide text-blue-700 mb-2">Verse of the Day</p>
       <p className="font-heading text-lg text-gray-800 leading-snug">“{verse.verse_text}”</p>
       <p className="text-sm font-semibold text-blue-800 mt-2">
