@@ -533,7 +533,7 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
           </div>
         )}
 
-        <form onSubmit={handleFormSubmit} className="p-4 max-md:pb-2 flex gap-2 items-end">
+        <form onSubmit={handleFormSubmit} className="p-4 max-md:pb-2.5 flex gap-2 items-end">
           <input
             ref={fileInputRef}
             type="file"
