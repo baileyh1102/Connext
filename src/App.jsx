@@ -55,6 +55,7 @@ function App() {
   }, [selectedConversation])
   const [showServerSettings, setShowServerSettings] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false) // controls the overlay sidebar on small screens only
+  const [mobileServersOpen, setMobileServersOpen] = useState(false)
   const [homeBubblesMode, setHomeBubblesMode] = useState(false)
   const swipeStart = useRef(null)
 
