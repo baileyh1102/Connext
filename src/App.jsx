@@ -879,7 +879,7 @@ function App() {
         {/* On mobile: a backdrop appears behind the open sidebar so tapping outside closes it */}
         {mobileSidebarOpen && (currentPage === 'chat' || currentPage === 'dm') && (
           <div
-            className="fixed inset-0 bg-black/50 z-30 md:hidden"
+            className="fixed inset-x-0 bottom-0 top-[env(safe-area-inset-top)] bg-black/50 z-30 md:hidden"
             onClick={() => {
               setMobileSidebarOpen(false)
               setMobileServersOpen(false)
