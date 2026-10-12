@@ -106,7 +106,7 @@ function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply
   }
 
   return (
-    <div className="w-96 bg-white border-l flex flex-col h-full">
+    <div className="fixed inset-0 z-40 md:static md:inset-auto md:z-auto w-full md:w-96 bg-white md:border-l flex flex-col h-full min-w-0 overflow-x-hidden">
       {/* ---- HEADER ---- */}
       <div className="p-4 border-b flex justify-between items-center">
         <h2 className="font-semibold">Thread</h2>
@@ -114,7 +114,7 @@ function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply
       </div>
 
       {/* ---- ORIGINAL MESSAGE + REPLIES ---- */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden touch-pan-y p-4 space-y-4">
         {/* The original message being replied to */}
         <div className="flex items-start gap-3 pb-4 border-b">
           {parentProfile?.avatar_url ? (
