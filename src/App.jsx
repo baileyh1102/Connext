@@ -943,25 +943,13 @@ function App() {
               className="hidden md:block absolute left-1/2 -translate-x-1/2 h-15"
             />
             <div className="flex items-center gap-2 md:gap-4">
-               {currentPage !== 'chat' && (
-                <span className="md:hidden font-heading font-semibold text-gray-900 truncate max-w-[9rem]">
-                  {currentPage === 'dm'
-                    ? conversationOtherProfile?.display_name || 'Messages'
-                    : currentPage === 'home'
-                      ? 'Home'
-                      : 'Calendar'}
-                </span>
-              )}
+             
               <div className="hidden md:block">
                 <PageNav currentPage={currentPage} setCurrentPage={setCurrentPage} />
               </div>
-              {currentPage !== 'chat' && (
+              {currentPage === 'dm' && (
                 <span className="md:hidden font-heading font-semibold text-gray-900 truncate max-w-[9rem]">
-                  {currentPage === 'dm'
-                    ? conversationOtherProfile?.display_name || 'Messages'
-                    : currentPage === 'home'
-                      ? 'Home'
-                      : 'Calendar'}
+                  {conversationOtherProfile?.display_name || 'Messages'}
                 </span>
               )}
               {currentPage === 'chat' && selectedChannel && selectedServer && (
