@@ -953,21 +953,15 @@ function App() {
               <div className="hidden md:block">
                 <PageNav currentPage={currentPage} setCurrentPage={setCurrentPage} />
               </div>
-              <button
-                type="button"
-                onClick={() => currentPage === 'chat' && setMobileSidebarOpen(true)}
-                className="md:hidden font-heading font-semibold text-gray-900 truncate max-w-[9rem] text-left"
-              >
-                {currentPage === 'chat'
-                  ? selectedChannel
-                    ? `# ${selectedChannel.name}`
-                    : 'Chat'
-                  : currentPage === 'dm'
+              {currentPage !== 'chat' && (
+                <span className="md:hidden font-heading font-semibold text-gray-900 truncate max-w-[9rem]">
+                  {currentPage === 'dm'
                     ? conversationOtherProfile?.display_name || 'Messages'
                     : currentPage === 'home'
                       ? 'Home'
                       : 'Calendar'}
-              </button>
+                </span>
+              )}
               {currentPage === 'chat' && selectedChannel && selectedServer && (
                 <ChannelViewerCount channel={selectedChannel} server={selectedServer} />
               )}

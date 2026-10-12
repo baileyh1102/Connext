@@ -14,7 +14,7 @@ export default defineConfig({
         name: 'Connext',
         short_name: 'Connext',
         description: 'A community chat and connection app',
-        theme_color: '#4f46e5',
+        theme_color: '#ffffff',
         background_color: '#ffffff',
         display: 'standalone',
         start_url: '/',
