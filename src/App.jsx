@@ -29,6 +29,7 @@ function App() {
   const [message, setMessage] = useState('')
   const [isLogin, setIsLogin] = useState(false)
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [birthDate, setBirthDate] = useState('')
   const [showPassword, setShowPassword] = useState(false)
 
   // ---- SERVER / CHANNEL STATE ----
@@ -378,6 +379,24 @@ function App() {
     return new Date(current).toDateString() !== new Date(previous).toDateString()
   }
 
+    // First login after sign-up: copy the birthday they entered into their profile
+  useEffect(() => {
+    const metaBirth = session?.user?.user_metadata?.birth_date
+    if (!metaBirth) return
+    ;(async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('birth_date')
+        .eq('user_id', session.user.id)
+        .maybeSingle()
+      if (!data?.birth_date) {
+        await supabase
+          .from('profiles')
+          .upsert({ user_id: session.user.id, birth_date: metaBirth }, { onConflict: 'user_id' })
+      }
+    })()
+  }, [session?.user?.id])
+
   const handleLogout = async () => {
     await supabase.auth.signOut()
   }
@@ -394,7 +413,11 @@ function App() {
         setMessage("Error: Passwords don't match")
         return
       }
-      const { error } = await supabase.auth.signUp({ email, password })
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { birth_date: birthDate } },
+      })
       if (error) setMessage(`Error: ${error.message}`)
       else setMessage('Success! Check your email to confirm your account.')
     }
@@ -1077,6 +1100,20 @@ function App() {
                 </svg>
               )}
             </button>
+          </div>
+        )}
+
+         {!isLogin && (
+          <div className="mb-4">
+            <label className="block text-xs text-gray-500 mb-1">Birthday</label>
+            <input
+              type="date"
+              value={birthDate}
+              onChange={(e) => setBirthDate(e.target.value)}
+              max={new Date().toISOString().slice(0, 10)}
+              className="w-full p-2 border rounded"
+              required
+            />
           </div>
         )}
 

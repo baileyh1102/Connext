@@ -11,6 +11,7 @@ import DMPollMessage from './DMPollMessage'
 import ChecklistCreator from './ChecklistCreator'
 import DMChecklistMessage from './DMChecklistMessage'
 import ScheduleMessagePicker from './ScheduleMessagePicker'
+import chatBg from './assets/chat-bg.png'
 
 function Attachment({ url, type, name, onExpand }) {
   if (type === 'image' || type === 'gif') {
@@ -316,7 +317,15 @@ function DMChatView({ conversation, currentUserId, currentUserEmail, otherProfil
 
   return (
     <div className="flex flex-col flex-1 min-h-0 bg-gray-100">
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div
+        className="flex-1 overflow-y-auto p-4 space-y-3"
+        style={{
+          backgroundImage: `url(${chatBg})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+        }}
+      >
         {messages.map((msg) => {
           const isOwn = msg.sender_id === currentUserId
           const senderProfile = isOwn ? null : otherProfile

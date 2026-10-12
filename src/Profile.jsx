@@ -13,6 +13,7 @@ function Profile({ session, onClose }) {
   const [avatarUrl, setAvatarUrl] = useState('')
   const [avatarFile, setAvatarFile] = useState(null)
   const [status, setStatus] = useState('online')
+  const [birthDate, setBirthDate] = useState('')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
   const fileInputRef = useRef(null)
@@ -31,6 +32,7 @@ function Profile({ session, onClose }) {
         setContactInfo(data.contact_info || '')
         setAvatarUrl(data.avatar_url || '')
         setStatus(data.status || 'online')
+        setBirthDate(data.birth_date || '')
       }
     }
     loadProfile()
@@ -74,6 +76,7 @@ function Profile({ session, onClose }) {
         contact_info: contactInfo,
         avatar_url: finalAvatarUrl,
         status: status,
+        birth_date: birthDate || null,
       }, { onConflict: 'user_id' })
 
     if (error) {
@@ -127,6 +130,15 @@ function Profile({ session, onClose }) {
             onChange={(e) => setDisplayName(e.target.value)}
             className="w-full p-2 mb-4 border rounded"
             placeholder="How you'll appear in chat"
+          />
+
+        <label className="block text-sm font-medium mb-1">Birthday</label>
+          <input
+            type="date"
+            value={birthDate}
+            onChange={(e) => setBirthDate(e.target.value)}
+            max={new Date().toISOString().slice(0, 10)}
+            className="w-full p-2 mb-4 border rounded"
           />
 
           <label className="block text-sm font-medium mb-1">Status</label>

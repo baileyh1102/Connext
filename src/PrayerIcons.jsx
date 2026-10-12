@@ -99,3 +99,14 @@ export function PraiseHandsIcon({ className = 'w-6 h-6' }) {
 </svg>
   )
 }
+
+export function PartyHatIcon({ className = 'w-7 h-7' }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 4 L5 21 H19 Z" fill="#fbbf24" stroke="#b45309" strokeWidth="1.3" />
+      <path d="M9.1 11 H14.9" stroke="#ec4899" strokeWidth="1.8" />
+      <path d="M7.1 16 H16.9" stroke="#ec4899" strokeWidth="1.8" />
+      <circle cx="12" cy="3.6" r="1.8" fill="#f472b6" stroke="#be185d" strokeWidth="1" />
+    </svg>
+  )
+}

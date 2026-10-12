@@ -4,8 +4,10 @@ import ReactionPicker from './ReactionPicker'
 import homeBg from './assets/mascot_stock_image.png'
 import communityWallHeader from './assets/community_wall_header.png'
 import FloatingBubbles from './FloatingBubbles'
-import { PrayingHandsIcon, PraiseHandsIcon } from './PrayerIcons'
+import { PrayingHandsIcon, PraiseHandsIcon, PartyHatIcon } from './PrayerIcons'
 import DailyVerseCard from './DailyVerseCard'
+import BirthdayBanner from './BirthdayBanner'
+import BirthdayCelebration from './BirthdayCelebration'
 
 // Small three-dot menu, top-right of a post, for Edit/Delete — only rendered for the post's own author
 function PostMenu({ onEdit, onDelete }) {
@@ -295,10 +297,12 @@ function HomePage({ selectedServer, session, isAdmin, canEditPosts, canDeletePos
         selectedServer={selectedServer}
         currentUserId={session.user.id}
         currentUserName={postsProfilesMap[session.user.id]?.display_name}
-      />     
+      />
+      <BirthdayCelebration session={session} />     
       <div className="relative z-10 max-w-xl mx-auto w-full h-full flex flex-col pb-3 pointer-events-none">
         <div className="flex flex-col gap-3 mb-4">
           <DailyVerseCard />
+          <BirthdayBanner selectedServer={selectedServer} />
           <button
             onClick={() => setShowComposer(!showComposer)}
             className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-2xl shadow pointer-events-auto">
@@ -379,13 +383,23 @@ function HomePage({ selectedServer, session, isAdmin, canEditPosts, canDeletePos
                   {/* ---- POST INFO: icon + name + timestamp, in plain black ---- */}
                   <div className="flex items-start gap-3">
                     <div className="shrink-0 text-blue-500">
-                      {post.type === 'prayer' ? <PrayingHandsIcon className="w-7 h-7" /> : <PraiseHandsIcon className="w-7 h-7" />}
+                      {post.type === 'prayer' ? (
+                        <PrayingHandsIcon className="w-7 h-7" />
+                      ) : post.type === 'birthday' ? (
+                        <PartyHatIcon className="w-7 h-7" />
+                      ) : (
+                        <PraiseHandsIcon className="w-7 h-7" />
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-start">
                         <p className="text-sm text-black">
                           <span className="font-semibold">{displayName}</span>
-                          <span className="text-gray-600"> posted a {actionLabel}</span>
+                          {post.type === 'birthday' ? (
+                            <span className="text-gray-600"> is celebrating a birthday today 🎉</span>
+                          ) : (
+                            <span className="text-gray-600"> posted a {actionLabel}</span>
+                          )}
                         </p>
                         {(isOwnPost || canEditPosts || canDeletePosts) && !isEditing && (
                           <PostMenu
