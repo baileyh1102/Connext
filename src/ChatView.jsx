@@ -62,6 +62,9 @@ function Attachment({ url, type, name, onExpand }) {
 // Editing a message populates this same input bar (Discord-style) instead
 // of turning the message bubble itself into a textarea in place.
 function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSendMessage, handleSendAttachment, handleCreatePoll, handleCreateChecklist, handleEditMessage, handleDeleteMessage, formatTime, formatDateLabel, isNewDay, currentUserId, currentUserEmail, selectedChannelId, replyCounts, onOpenThread, reactionsMap, onToggleReaction, canManageMessages, serverMembers = [] }) {
+  const [actionMsg, setActionMsg] = useState(null) // message whose long-press menu is open
+  const pressTimer = useRef(null)
+  const pressStart = useRef(null)
   const [editingMessage, setEditingMessage] = useState(null) // the message object currently being edited, or null
   const bottomRef = useRef(null) // an invisible marker at the end of the message list we scroll to
   const scrollContainerRef = useRef(null) // the scrollable message list itself, used to measure scroll position
@@ -176,6 +179,26 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
     setNewMessage('')
   }
 
+
+  const cancelPress = () => {
+    clearTimeout(pressTimer.current)
+    pressStart.current = null
+  }
+  const startPress = (e, msg) => {
+    if (window.innerWidth >= 768) return
+    const t = e.touches[0]
+    pressStart.current = { x: t.clientX, y: t.clientY }
+    clearTimeout(pressTimer.current)
+    pressTimer.current = setTimeout(() => {
+      if (navigator.vibrate) navigator.vibrate(15)
+      setActionMsg(msg)
+    }, 450)
+  }
+  const movePress = (e) => {
+    if (!pressStart.current) return
+    const t = e.touches[0]
+    if (Math.abs(t.clientX - pressStart.current.x) > 10 || Math.abs(t.clientY - pressStart.current.y) > 10) cancelPress()
+  }
 
   const handleCopy = (id, content) => {
     navigator.clipboard.writeText(content)
@@ -308,7 +331,15 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
                   </span>
                 </div>
               )}
-              <div className="flex items-start gap-3">
+              <div
+                className="flex items-start gap-3 max-md:select-none"
+                style={{ WebkitTouchCallout: 'none' }}
+                onTouchStart={(e) => startPress(e, msg)}
+                onTouchMove={movePress}
+                onTouchEnd={cancelPress}
+                onTouchCancel={cancelPress}
+                onContextMenu={(e) => { if (window.innerWidth < 768) e.preventDefault() }}
+              >
                 <button onClick={() => setViewingProfile({ profile: senderProfile, email: msg.user_email })} className="flex-shrink-0">
                   {senderProfile?.avatar_url ? (
                     <img src={senderProfile.avatar_url} alt="Avatar" className="w-9 h-9 rounded-full object-cover" />
@@ -498,6 +529,55 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
 
       {/* ---- MESSAGE INPUT BAR ---- */}
       <div className="bg-white">
+        {/* ---- PHONE: long-press message actions ---- */}
+        {actionMsg && (
+          <div className="fixed inset-0 z-50 md:hidden" onClick={() => setActionMsg(null)}>
+            <div className="absolute inset-0 bg-black/40" />
+            <div
+              className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl p-2 pb-[max(env(safe-area-inset-bottom),12px)] shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mx-auto w-10 h-1 bg-gray-300 rounded-full my-2" />
+              {actionMsg.content && (
+                <p className="px-4 pb-2 text-sm text-gray-500 line-clamp-2">{actionMsg.content}</p>
+              )}
+              <button
+                className="w-full text-left px-4 py-3 text-base hover:bg-gray-100 rounded-lg"
+                onClick={() => { onOpenThread(actionMsg); setActionMsg(null) }}
+              >
+                Reply
+              </button>
+              {actionMsg.content && (
+                <button
+                  className="w-full text-left px-4 py-3 text-base hover:bg-gray-100 rounded-lg"
+                  onClick={() => { handleCopy(actionMsg.id, actionMsg.content); setActionMsg(null) }}
+                >
+                  Copy text
+                </button>
+              )}
+              {actionMsg.user_id === currentUserId && actionMsg.content && (
+                <button
+                  className="w-full text-left px-4 py-3 text-base hover:bg-gray-100 rounded-lg"
+                  onClick={() => { startEditing(actionMsg); setActionMsg(null) }}
+                >
+                  Edit
+                </button>
+              )}
+              {(actionMsg.user_id === currentUserId || canManageMessages) && (
+                <button
+                  className="w-full text-left px-4 py-3 text-base text-red-600 hover:bg-red-50 rounded-lg"
+                  onClick={() => {
+                    if (window.confirm('Delete this message?')) handleDeleteMessage(actionMsg.id)
+                    setActionMsg(null)
+                  }}
+                >
+                  Delete
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* ---- EDITING INDICATOR ---- */}
         {editingMessage && (
           <div className="px-4 pt-3 flex items-center justify-between text-sm text-blue-600 bg-blue-50">
