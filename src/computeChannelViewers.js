@@ -16,7 +16,7 @@ export async function computeChannelViewers(channel, server) {
 
   const { data: profileRows } = await supabase
     .from('profiles')
-    .select('user_id, display_name, avatar_url')
+    .select('user_id, display_name, avatar_url, status')
     .in('user_id', allUserIds)
 
   const { data: channelPermRows } = await supabase

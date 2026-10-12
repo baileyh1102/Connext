@@ -1,4 +1,4 @@
-function Dashboard({ profile, session, onEditProfile, onLogout, onClose }) {
+function Dashboard({ profile, session, onEditProfile, onLogout, onContactSupport }) {
   return (
     <div className="absolute top-14 right-4 bg-white rounded-lg shadow-lg w-64 p-4 z-40 border">
       <div className="flex items-center gap-3 mb-4">
@@ -20,6 +20,12 @@ function Dashboard({ profile, session, onEditProfile, onLogout, onClose }) {
         className="w-full text-left text-sm px-3 py-2 rounded hover:bg-gray-100 mb-1"
       >
         Edit Profile
+      </button>
+      <button
+        onClick={onContactSupport}
+        className="w-full text-left text-sm px-3 py-2 rounded hover:bg-gray-100 mb-1"
+      >
+        Contact Support
       </button>
       <button
         onClick={onLogout}

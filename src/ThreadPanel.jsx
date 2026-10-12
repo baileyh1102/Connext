@@ -2,16 +2,19 @@ import { useState, useRef } from 'react'
 import ReactionPicker from './ReactionPicker'
 import ReactorList from './ReactorList'
 import { linkify } from './linkify'
+import MentionAutocomplete from './MentionAutocomplete'
+import { detectMentionQuery, insertMention, mentionify } from './mentions'
 
 // ThreadPanel is a slide-out panel showing a parent message and all its
 // replies, with its own input box for adding more replies. Editing a reply
 // populates that same input bar (Discord-style) instead of turning the
 // reply bubble into a textarea in place — same pattern as ChatView.
-function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply, formatTime, currentUserId, handleEditMessage, handleDeleteMessage, reactionsMap, onToggleReaction, canManageMessages }) {
+function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply, formatTime, currentUserId, handleEditMessage, handleDeleteMessage, reactionsMap, onToggleReaction, canManageMessages, serverMembers = [] }) {
   const [replyText, setReplyText] = useState('')
   const [editingReply, setEditingReply] = useState(null) // the reply object currently being edited, or null
   const [copiedId, setCopiedId] = useState(null)
   const [openReactorList, setOpenReactorList] = useState(null)
+  const [mentionQuery, setMentionQuery] = useState(null)
   const textareaRef = useRef(null)
 
   const parentProfile = profilesMap[parentMessage.user_id]
@@ -52,13 +55,31 @@ function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply
   }
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && mentionQuery === null) {
       e.preventDefault()
       handleSubmit(e)
     }
-    if (e.key === 'Escape' && editingReply) {
-      cancelEditing()
+    if (e.key === 'Escape') {
+      if (mentionQuery !== null) setMentionQuery(null)
+      else if (editingReply) cancelEditing()
     }
+  }
+
+  const handleInputChange = (e) => {
+    const value = e.target.value
+    setReplyText(value)
+    setMentionQuery(detectMentionQuery(value, e.target.selectionStart))
+  }
+
+  const handleSelectMention = (displayName) => {
+    const cursorPos = textareaRef.current.selectionStart
+    const { newText, newCursorPos } = insertMention(replyText, cursorPos, displayName)
+    setReplyText(newText)
+    setMentionQuery(null)
+    requestAnimationFrame(() => {
+      textareaRef.current.focus()
+      textareaRef.current.setSelectionRange(newCursorPos, newCursorPos)
+    })
   }
 
   // Groups a message's raw reaction rows into { emoji: { count, reactedByMe } },
@@ -109,7 +130,11 @@ function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply
               <span className="text-xs text-gray-400">{formatTime(parentMessage.created_at)}</span>
             </div>
             <div className="mt-1">
-              <span className="whitespace-pre-wrap">{linkify(parentMessage.content)}</span>
+              <span className="whitespace-pre-wrap">
+                {mentionify(parentMessage.content, serverMembers).map((part, i) =>
+                  typeof part === 'string' ? <span key={i}>{linkify(part)}</span> : part
+                )}
+              </span>
             </div>
           </div>
         </div>
@@ -144,7 +169,11 @@ function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply
                 <div className="flex flex-col items-start mt-1">
                   <div className="relative inline-block group">
                     <div className={`bg-gray-100 p-2 rounded ${isBeingEdited ? 'ring-2 ring-blue-400' : ''}`}>
-                      <span className="whitespace-pre-wrap">{linkify(reply.content)}</span>
+                      <span className="whitespace-pre-wrap">
+                        {mentionify(reply.content, serverMembers).map((part, i) =>
+                          typeof part === 'string' ? <span key={i}>{linkify(part)}</span> : part
+                        )}
+                      </span>
                     </div>
 
                     {/* ---- HOVER ACTIONS: React / Edit / Delete (no Reply-to-reply — threads stay one level deep) ---- */}
@@ -265,16 +294,21 @@ function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply
           </div>
         )}
         <form onSubmit={handleSubmit} className="p-4 border-t flex gap-2 items-end">
-          <textarea
-            ref={textareaRef}
-            value={replyText}
-            onChange={(e) => setReplyText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Reply..."
-            rows={Math.min(replyText.split('\n').length, 4)}
-            className="flex-1 border rounded p-2 resize-none text-sm"
-          />
-          <button type="submit" className="bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-600/90 text-sm">
+          <div className="relative flex-1">
+            {mentionQuery !== null && (
+              <MentionAutocomplete members={serverMembers} query={mentionQuery} onSelect={handleSelectMention} />
+            )}
+            <textarea
+              ref={textareaRef}
+              value={replyText}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              placeholder="Reply..."
+              rows={Math.min(replyText.split('\n').length, 4)}
+              className="block w-full border rounded p-2 resize-none text-sm"
+            />
+          </div>
+              <button type="submit" className="bg-blue-600 text-white px-4 py-[7px] rounded hover:bg-blue-600/90">
             {editingReply ? 'Save' : 'Send'}
           </button>
         </form>

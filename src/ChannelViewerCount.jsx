@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { computeChannelViewers } from './computeChannelViewers'
+import StatusDot from './StatusDot'
+import { usePresence, getEffectiveStatus } from './usePresence'
 
 // ChannelViewerCount shows "# channel-name  •  N here" in the header, and
 // opens a popup listing everyone who currently has permission to view this
@@ -8,6 +10,7 @@ function ChannelViewerCount({ channel, server }) {
   const [viewers, setViewers] = useState([])
   const [showList, setShowList] = useState(false)
   const popupRef = useRef(null)
+  const onlineUserIds = usePresence()
 
   useEffect(() => {
     if (!channel || !server) return
@@ -55,11 +58,14 @@ function ChannelViewerCount({ channel, server }) {
           </div>
           {viewers.map((v) => (
             <div key={v.user_id} className="flex items-center gap-2 px-3 py-2">
-              {v.avatar_url ? (
-                <img src={v.avatar_url} alt="" className="w-6 h-6 rounded-full object-cover" />
-              ) : (
-                <div className="w-6 h-6 rounded-full bg-gray-300" />
-              )}
+              <div className="relative flex-shrink-0">
+                {v.avatar_url ? (
+                  <img src={v.avatar_url} alt="" className="w-6 h-6 rounded-full object-cover" />
+                ) : (
+                  <div className="w-6 h-6 rounded-full bg-gray-300" />
+                )}
+                <StatusDot status={getEffectiveStatus(v.user_id, v.status, onlineUserIds)} size="w-2 h-2" />
+              </div>
               <span className="text-sm text-gray-700 truncate">{v.display_name || 'A member'}</span>
             </div>
           ))}

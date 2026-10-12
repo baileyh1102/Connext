@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react'
+ import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
 import ReactionPicker from './ReactionPicker'
 import homeBg from './assets/mascot_stock_image.png'
 import communityWallHeader from './assets/community_wall_header.png'
 import FloatingBubbles from './FloatingBubbles'
+import { PrayingHandsIcon, PraiseHandsIcon } from './PrayerIcons'
+import DailyVerseCard from './DailyVerseCard'
 
 // Small three-dot menu, top-right of a post, for Edit/Delete — only rendered for the post's own author
 function PostMenu({ onEdit, onDelete }) {
@@ -286,7 +288,7 @@ function HomePage({ selectedServer, session, isAdmin, canEditPosts, canDeletePos
 
     return (
     <div
-      className="relative flex-1 overflow-y-auto bg-gray-100"
+      className="relative flex-1 h-full overflow-hidden bg-gray-100"
       style={{ backgroundImage: `url(${homeBg})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
     >
       <FloatingBubbles
@@ -294,19 +296,20 @@ function HomePage({ selectedServer, session, isAdmin, canEditPosts, canDeletePos
         currentUserId={session.user.id}
         currentUserName={postsProfilesMap[session.user.id]?.display_name}
       />     
-      <div className="relative z-10 max-w-xl mx-auto w-full flex flex-col flex-1 pointer-events-none">
-        <div className="flex flex-col items-center gap-3 mb-4 pointer-events-auto">
-          <img src={communityWallHeader} alt="Community Wall" className="h-12 drp-shadow-md" />
+      <div className="relative z-10 max-w-xl mx-auto w-full h-full flex flex-col pb-3 pointer-events-none">
+        <div className="flex flex-col items-center gap-3 mb-4">
+          <DailyVerseCard />
+          <img src={communityWallHeader} alt="Community Wall" className="h-12 drp-shadow-md pointer-events-none" />
           <button
             onClick={() => setShowComposer(!showComposer)}
-            className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-1.5 rounded-full shadow"
+            className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-1.5 rounded-full shadow pointer-events-auto"
           >
             {showComposer ? 'Cancel' : '+ Post'}
           </button>
         </div>
 
         {showComposer && (
-          <form onSubmit={handleSubmitPost} className="bg-white p-4 rounded-lg shadow-sm mb-4">
+          <form onSubmit={handleSubmitPost} className="bg-white p-4 rounded-lg shadow-sm mb-4 pointer-events-auto">
             <div className="flex gap-2 mb-2">
               <button
                 type="button"
@@ -315,7 +318,7 @@ function HomePage({ selectedServer, session, isAdmin, canEditPosts, canDeletePos
                   postType === 'prayer' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'
                 }`}
               >
-                🙏 Prayer Request
+                Prayer Request
               </button>
               <button
                 type="button"
@@ -324,7 +327,7 @@ function HomePage({ selectedServer, session, isAdmin, canEditPosts, canDeletePos
                   postType === 'praise' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600'
                 }`}
               >
-                🙌 Praise
+                Praise
               </button>
             </div>
             <textarea
@@ -358,7 +361,7 @@ function HomePage({ selectedServer, session, isAdmin, canEditPosts, canDeletePos
         )}
 
         {/* ---- FEED ---- */}
-        <div className="border border-gray-200 bg-gray-50 px-4 py-4 space-y-4 flex-1 rounded-lg">
+        <div className="border border-gray-200 bg-gray-50 px-4 py-4 space-y-4 flex-1 rounded-lg pointer-events-auto overflow-y-auto">
           {posts.length === 0 && (
             <p className="text-center text-gray-400 text-sm py-12">No posts yet — be the first to share.</p>
           )}
@@ -373,51 +376,58 @@ function HomePage({ selectedServer, session, isAdmin, canEditPosts, canDeletePos
             const areCommentsOpen = expandedComments[post.id]
 
             return (
-              <div key={post.id} className="bg-white rounded-lg shadow-sm overflow-hidden">
-                <div className="flex items-start gap-3 p-4">
-                  {/* Big emoji badge, top-left */}
-                  <div className="text-3xl shrink-0">
-                    {post.type === 'prayer' ? '🙏' : '🙌'}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start">
-                      <p className="text-sm">
-                        <span className="font-semibold">{displayName}</span>
-                        <span className="text-gray-500"> posted a {actionLabel}</span>
-                      </p>
-                      {(isOwnPost || canEditPosts || canDeletePosts) && !isEditing && (
-                      <PostMenu
-                        onEdit={(isOwnPost || canEditPosts) ? () => startEditingPost(post) : null}
-                        onDelete={(isOwnPost || canDeletePosts) ? () => handleDeletePost(post.id) : null}
-                      />
-                    )}
+              <div key={post.id} className="bg-blue-50 border border-blue-100 rounded-2xl shadow-sm overflow-hidden">
+                <div className="p-5">
+                  {/* ---- POST INFO: icon + name + timestamp, in plain black ---- */}
+                  <div className="flex items-start gap-3">
+                    <div className="shrink-0 text-blue-500">
+                      {post.type === 'prayer' ? <PrayingHandsIcon className="w-7 h-7" /> : <PraiseHandsIcon className="w-7 h-7" />}
                     </div>
-                    <p className="text-xs text-gray-400">{formatTime(post.created_at)}</p>
-
-                    {isEditing ? (
-                      <div className="mt-2">
-                        <textarea
-                          autoFocus
-                          value={editPostValue}
-                          onChange={(e) => setEditPostValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                              e.preventDefault()
-                              submitEditPost(post.id)
-                            }
-                            if (e.key === 'Escape') setEditingPostId(null)
-                          }}
-                          rows={3}
-                          className="w-full border rounded p-2 text-sm resize-none"
-                        />
-                        <div className="text-xs text-gray-400 mt-1">Enter to save, Shift+Enter for a new line, Esc to cancel</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-start">
+                        <p className="text-sm text-black">
+                          <span className="font-semibold">{displayName}</span>
+                          <span className="text-gray-600"> posted a {actionLabel}</span>
+                        </p>
+                        {(isOwnPost || canEditPosts || canDeletePosts) && !isEditing && (
+                          <PostMenu
+                            onEdit={(isOwnPost || canEditPosts) ? () => startEditingPost(post) : null}
+                            onDelete={(isOwnPost || canDeletePosts) ? () => handleDeletePost(post.id) : null}
+                          />
+                        )}
                       </div>
-                    ) : (
-                      <p className="mt-2 whitespace-pre-wrap">{post.content}</p>
-                    )}
+                      <p className="text-xs text-gray-500">{formatTime(post.created_at)}</p>
+                    </div>
+                  </div>
 
-                    {/* ---- REACTIONS ---- */}
-                    <div className="flex flex-wrap items-center gap-1 mt-3">
+                  {/* ---- DIVIDER: separates post info from the actual content ---- */}
+                  <div className="border-t border-blue-200 my-4" />
+
+                  {/* ---- CONTENT: bigger, distinct heading font ---- */}
+                  {isEditing ? (
+                    <div>
+                      <textarea
+                        autoFocus
+                        value={editPostValue}
+                        onChange={(e) => setEditPostValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault()
+                            submitEditPost(post.id)
+                          }
+                          if (e.key === 'Escape') setEditingPostId(null)
+                        }}
+                        rows={4}
+                        className="w-full border rounded p-2 text-base resize-none"
+                      />
+                      <div className="text-xs text-gray-400 mt-1">Enter to save, Shift+Enter for a new line, Esc to cancel</div>
+                    </div>
+                  ) : (
+                    <p className="font-heading text-lg text-gray-800 whitespace-pre-wrap min-h-[4rem]">{post.content}</p>
+                  )}
+
+                  {/* ---- REACTIONS ---- */}
+                  <div className="flex flex-wrap items-center gap-1 mt-4">
                       {Object.entries(groupedReactions).map(([emoji, { count, reactedByMe }]) => (
                         <button
                           key={emoji}
@@ -441,9 +451,9 @@ function HomePage({ selectedServer, session, isAdmin, canEditPosts, canDeletePos
                       </button>
                     </div>
 
-                    {/* ---- COMMENTS ---- */}
-                    {areCommentsOpen && (
-                      <div className="mt-3 pt-3 border-t space-y-2">
+                  {/* ---- COMMENTS ---- */}
+                  {areCommentsOpen && (
+                    <div className="mt-3 pt-3 border-t border-blue-200 space-y-2">
                         {comments.map((c) => {
                           const commentProfile = postsProfilesMap[c.user_id]
                           const isOwnComment = c.user_id === session.user.id
@@ -478,10 +488,9 @@ function HomePage({ selectedServer, session, isAdmin, canEditPosts, canDeletePos
                           <button type="submit" className="text-sm text-blue-600 hover:underline">
                             Post
                           </button>
-                        </form>
-                      </div>
-                    )}
-                  </div>
+                      </form>
+                    </div>
+                  )}
                 </div>
               </div>
             )

@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabaseClient'
 import ChannelSettings from './ChannelSettings'
+import TeamTemplatePicker from './TeamTemplatePicker'
 import CategorySettings from './CategorySettings'
 
 const TABS = [
   { id: 'general', label: 'General' },
   { id: 'members', label: 'Members' },
   { id: 'invites', label: 'Invites' },
+  { id: 'templates', label: 'Templates' },
   { id: 'channels', label: 'Channels' },
   { id: 'categories', label: 'Categories' },
 ]
@@ -47,7 +49,7 @@ function isAdmin(member) {
   return PERMISSIONS.every((p) => !!member[p.key])
 }
 
-function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServerUpdated }) {
+function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onLeaveServer, onServerUpdated }) {
   const [activeTab, setActiveTab] = useState('general')
   const isCreator = server.created_by === currentUserId
 
@@ -75,11 +77,6 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServ
 
   const [members, setMembers] = useState([])
   const [openMemberMenu, setOpenMemberMenu] = useState(null)
-
-  const [invites, setInvites] = useState([])
-  const [newInviteGrants, setNewInviteGrants] = useState(
-    PERMISSIONS.reduce((acc, p) => ({ ...acc, [p.key]: false }), {})
-  )
 
   useEffect(() => {
     if (isCreator) return
@@ -191,55 +188,56 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServ
     fetchMembers()
   }, [activeTab, server.id])
 
+  // ---- INVITES: one link per server; private servers have no link ----
+  const [invite, setInvite] = useState(null)
+  const [isPublic, setIsPublic] = useState(true)
+  const [inviteBusy, setInviteBusy] = useState(false)
+  const [inviteMessage, setInviteMessage] = useState('')
+
+  const loadInvite = async () => {
+    const [{ data: srv }, { data: inv }] = await Promise.all([
+      supabase.from('servers').select('is_public').eq('id', server.id).single(),
+      supabase.from('invites').select('*').eq('server_id', server.id).maybeSingle(),
+    ])
+    setIsPublic(srv?.is_public ?? true)
+    setInvite(inv || null)
+  }
+
   useEffect(() => {
     if (activeTab !== 'invites') return
-    const fetchInvites = async () => {
-      const { data } = await supabase
-        .from('invites')
-        .select('*')
-        .eq('server_id', server.id)
-        .order('created_at', { ascending: false })
-      setInvites(data || [])
-    }
-    fetchInvites()
+    setInviteMessage('')
+    loadInvite()
   }, [activeTab, server.id])
 
-  const generateInviteCode = () => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-    let code = ''
-    for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)]
-    return code
-  }
+  const handleTogglePublic = async () => {
+    if (inviteBusy) return
+    setInviteBusy(true)
+    setInviteMessage('')
+    const next = !isPublic
 
-  const handleCreateInvite = async () => {
-    // Build the grant_* fields dynamically from PERMISSIONS, so adding a new
-    // permission in the future doesn't require touching this function too
-    const grants = PERMISSIONS.reduce((acc, p) => ({ ...acc, [`grant_${p.key}`]: newInviteGrants[p.key] }), {})
-
+    // The database trigger deletes the link (private) or makes a brand-new one (public)
     const { data, error } = await supabase
-      .from('invites')
-      .insert({
-        server_id: server.id,
-        code: generateInviteCode(),
-        created_by: currentUserId,
-        ...grants,
-      })
+      .from('servers')
+      .update({ is_public: next })
+      .eq('id', server.id)
       .select()
-      .single()
 
-    if (!error && data) {
-      setInvites((current) => [data, ...current])
-      setNewInviteGrants(PERMISSIONS.reduce((acc, p) => ({ ...acc, [p.key]: false }), {}))
+    if (error || !data || data.length === 0) {
+      setInviteMessage("Couldn't change this. Try again.")
+    } else {
+      await loadInvite()
+      setInviteMessage(
+        next
+          ? 'Server is now public. A new invite link was created, and the old one no longer works.'
+          : 'Server is now private. The invite link was deleted.'
+      )
     }
-  }
-
-  const handleToggleInviteActive = async (invite) => {
-    await supabase.from('invites').update({ active: !invite.active }).eq('id', invite.id)
-    setInvites((current) => current.map((i) => (i.id === invite.id ? { ...i, active: !i.active } : i)))
+    setInviteBusy(false)
   }
 
   const copyInviteCode = (code) => {
     navigator.clipboard.writeText(code)
+    setInviteMessage('Copied!')
   }
 
   const handleSaveGeneral = async (e) => {
@@ -323,6 +321,13 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServ
       onClose()
     }
   }
+    
+  const handleLeave = async () => {
+    if (window.confirm(`Leave "${server.name}"? You'll lose access to its channels until you're invited again.`)) {
+      await onLeaveServer(server.id)
+      onClose()
+    }
+  }
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -349,6 +354,14 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServ
           </div>
 
           <div className="flex-1 overflow-y-auto p-6">
+            {activeTab === 'templates' && (
+              <TeamTemplatePicker
+                server={server}
+                currentUserId={currentUserId}
+                canManageChannels={canManageChannels}
+              />
+            )}
+
             {activeTab === 'general' && (
               <div>
                 {!canManageServer && (
@@ -415,6 +428,19 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServ
                       className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 text-sm"
                     >
                       Delete Server
+                    </button>
+                  </div>
+                )}
+
+                {!isCreator && (
+                  <div className="mt-8 pt-6 border-t">
+                    <h3 className="text-sm font-semibold text-red-600 mb-2">Danger Zone</h3>
+                    <button
+                      type="button"
+                      onClick={handleLeave}
+                      className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 text-sm"
+                    >
+                      Leave Server
                     </button>
                   </div>
                 )}
@@ -576,58 +602,60 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onServ
             {activeTab === 'invites' && (
               <div>
                 {canManageServer ? (
-                  <div className="mb-6 bg-gray-50 p-4 rounded-lg">
-                    <label className="block text-sm font-medium mb-2">Permissions granted to new members</label>
-                    <div className="space-y-1 mb-3">
-                      {PERMISSIONS.map((p) => (
-                        <label key={p.key} className="flex items-center gap-2 text-sm text-gray-600">
-                          <input
-                            type="checkbox"
-                            checked={newInviteGrants[p.key]}
-                            onChange={(e) => setNewInviteGrants((current) => ({ ...current, [p.key]: e.target.checked }))}
-                          />
-                          {p.label}
-                        </label>
-                      ))}
+                  <div>
+                    <div className="flex items-center justify-between bg-gray-50 p-4 rounded-lg mb-4">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">
+                          {isPublic ? 'Public server' : 'Private server'}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {isPublic
+                            ? 'Anyone with the invite link can join.'
+                            : 'The invite link is turned off. Nobody new can join.'}
+                        </p>
+                      </div>
+                      <button
+                        onClick={handleTogglePublic}
+                        disabled={inviteBusy}
+                        className={`relative w-11 h-6 rounded-full transition-colors disabled:opacity-50 ${
+                          isPublic ? 'bg-blue-600' : 'bg-gray-300'
+                        }`}
+                        title={isPublic ? 'Make private' : 'Make public'}
+                      >
+                        <span
+                          className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                            isPublic ? 'translate-x-5' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
                     </div>
-                    <button
-                      onClick={handleCreateInvite}
-                      className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700"
-                    >
-                      Generate Invite Code
-                    </button>
+
+                    {isPublic && invite ? (
+                      <div className="flex items-center justify-between border border-gray-200 rounded-lg p-3">
+                        <div>
+                          <p className="text-xs text-gray-500">Invite code</p>
+                          <p className="text-lg font-mono font-semibold text-gray-900">{invite.code}</p>
+                        </div>
+                        <button
+                          onClick={() => copyInviteCode(invite.code)}
+                          className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    ) : (
+                      !isPublic && (
+                        <p className="text-sm text-gray-400">
+                          Switch the server back to public to get a new invite link.
+                        </p>
+                      )
+                    )}
+
+                    {inviteMessage && <p className="text-sm text-gray-600 mt-3">{inviteMessage}</p>}
                   </div>
                 ) : (
                   <p className="text-sm text-gray-400 mb-4">You don't have permission to manage invites.</p>
                 )}
-
-                <div className="space-y-2">
-                  {invites.length === 0 && <p className="text-sm text-gray-400">No invite codes yet.</p>}
-                  {invites.map((invite) => {
-                    const grantedLabels = PERMISSIONS.filter((p) => invite[`grant_${p.key}`]).map((p) => p.label)
-                    return (
-                      <div key={invite.id} className={`flex justify-between items-center p-2 rounded ${invite.active ? 'hover:bg-gray-50' : 'opacity-50'}`}>
-                        <div>
-                          <p className="text-sm font-mono font-medium">{invite.code}</p>
-                          <p className="text-xs text-gray-400">
-                            {grantedLabels.length > 0 ? grantedLabels.join(', ') : 'No extra permissions'}
-                            {!invite.active && ' · Revoked'}
-                          </p>
-                        </div>
-                        {canManageServer && (
-                          <div className="flex gap-3">
-                            <button onClick={() => copyInviteCode(invite.code)} className="text-xs text-blue-600 hover:underline">
-                              Copy
-                            </button>
-                            <button onClick={() => handleToggleInviteActive(invite)} className="text-xs text-gray-500 hover:text-gray-700">
-                              {invite.active ? 'Revoke' : 'Reactivate'}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
               </div>
             )}
           </div>

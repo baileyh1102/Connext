@@ -10,7 +10,10 @@ import PollMessage from './PollMessage'
 import ChecklistCreator from './ChecklistCreator'
 import ChecklistMessage from './ChecklistMessage'
 import ScheduleMessagePicker from './ScheduleMessagePicker'
+import MentionAutocomplete from './MentionAutocomplete'
+import { detectMentionQuery, insertMention, mentionify } from './mentions'
 import ReactorList from './ReactorList'
+import chatBg from './assets/chat-bg.png'
 
 // Renders a message's attachment according to its type — an image, a video/audio
 // player, or a document link for PDFs. Images and videos open in a full-screen
@@ -58,14 +61,15 @@ function Attachment({ url, type, name, onExpand }) {
 // plus the input bar for sending new messages (text or file attachments).
 // Editing a message populates this same input bar (Discord-style) instead
 // of turning the message bubble itself into a textarea in place.
-function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSendMessage, handleSendAttachment, handleCreatePoll, handleCreateChecklist, handleEditMessage, handleDeleteMessage, formatTime, formatDateLabel, isNewDay, currentUserId, currentUserEmail, selectedChannelId, replyCounts, onOpenThread, reactionsMap, onToggleReaction, canManageMessages }) {
+function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSendMessage, handleSendAttachment, handleCreatePoll, handleCreateChecklist, handleEditMessage, handleDeleteMessage, formatTime, formatDateLabel, isNewDay, currentUserId, currentUserEmail, selectedChannelId, replyCounts, onOpenThread, reactionsMap, onToggleReaction, canManageMessages, serverMembers = [] }) {
   const [editingMessage, setEditingMessage] = useState(null) // the message object currently being edited, or null
   const bottomRef = useRef(null) // an invisible marker at the end of the message list we scroll to
   const scrollContainerRef = useRef(null) // the scrollable message list itself, used to measure scroll position
   const fileInputRef = useRef(null)
   const textareaRef = useRef(null)
   const prevMessageCountRef = useRef(messages.length) // tracks the last known count, to detect real additions vs. edits/deletes
-
+  const lastChannelIdRef = useRef(selectedChannelId) // tracks which channel we were last viewing
+  const pendingChannelScrollRef = useRef(false) // set true the moment we switch channels, cleared once we've scrolled for it
   const [pendingFile, setPendingFile] = useState(null) // a file selected but not yet sent
   const [previewUrl, setPreviewUrl] = useState(null) // an object URL for showing an image/video preview
   const [viewingProfile, setViewingProfile] = useState(null) // the profile object currently shown in the popup
@@ -76,7 +80,49 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
   const [showPollCreator, setShowPollCreator] = useState(false)
   const [showChecklistCreator, setShowChecklistCreator] = useState(false)
   const [showSchedulePicker, setShowSchedulePicker] = useState(false)
+  const [mentionQuery, setMentionQuery] = useState(null) // the partial name being typed after "@", or null
   const [openReactorList, setOpenReactorList] = useState(null) // { emoji, names, anchorPosition } for the right-clicked pill
+
+  // Jumps straight to the bottom whenever you switch to a DIFFERENT channel —
+  // the smart auto-scroll below only handles genuinely new messages arriving,
+  // so opening a channel fresh needs this separate, unconditional scroll.
+  // Step 1: the moment the selected channel changes, just flag that we owe
+  // this channel a scroll-to-bottom once its real messages show up
+  useEffect(() => {
+    if (selectedChannelId !== lastChannelIdRef.current) {
+      lastChannelIdRef.current = selectedChannelId
+      pendingChannelScrollRef.current = true
+    }
+  }, [selectedChannelId])
+
+  // Step 2: whenever messages actually change, if we're still owed a scroll
+  // from a recent channel switch AND there's now something to scroll to,
+  // do it and clear the flag — this naturally waits out whatever async
+  // delay exists between "channel selected" and "its messages arrived"
+  useEffect(() => {
+    if (pendingChannelScrollRef.current && messages.length > 0) {
+      pendingChannelScrollRef.current = false
+      prevMessageCountRef.current = messages.length
+
+      // Snap the container's scroll position straight to its max, on the
+      // next two animation frames (double rAF gives layout an extra beat to
+      // settle — e.g. attachment images finishing their intrinsic sizing —
+      // before we measure scrollHeight) rather than relying on
+      // scrollIntoView, which can under-scroll if layout shifts afterward.
+      const scrollToBottom = () => {
+        const container = scrollContainerRef.current
+        if (container) {
+          container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+        }
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })
+      }
+
+      // Wait for everything (including any images/GIFs) to actually finish
+      // rendering before scrolling, rather than racing it and correcting
+      // afterward — a clean half-second pause, then one final scroll.
+      setTimeout(scrollToBottom, 500)
+    }
+  }, [messages])
 
   // Smart auto-scroll: only scrolls down when a message is genuinely ADDED
   // (not edited or deleted — those don't change the message count), and only
@@ -181,13 +227,32 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
   // Enter alone submits (send or save-edit); Shift+Enter inserts a newline;
   // Escape exits edit mode without saving
   const handleInputKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && mentionQuery === null) {
       e.preventDefault()
       handleFormSubmit(e)
     }
-    if (e.key === 'Escape' && editingMessage) {
-      cancelEditing()
+    if (e.key === 'Escape') {
+      if (mentionQuery !== null) setMentionQuery(null)
+      else if (editingMessage) cancelEditing()
     }
+  }
+
+  const handleInputChange = (e) => {
+    const value = e.target.value
+    setNewMessage(value)
+    setMentionQuery(detectMentionQuery(value, e.target.selectionStart))
+  }
+
+  const handleSelectMention = (displayName) => {
+    const cursorPos = textareaRef.current.selectionStart
+    const { newText, newCursorPos } = insertMention(newMessage, cursorPos, displayName)
+    setNewMessage(newText)
+    setMentionQuery(null)
+    // Restore focus + cursor position after React re-renders the textarea
+    requestAnimationFrame(() => {
+      textareaRef.current.focus()
+      textareaRef.current.setSelectionRange(newCursorPos, newCursorPos)
+    })
   }
 
   // Groups a message's raw reaction rows into { emoji: { count, reactedByMe } }
@@ -217,7 +282,16 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
   return (
     <div className="flex flex-col flex-1 min-h-0 bg-gray-100">
       {/* ---- CHAT MESSAGE LIST ---- */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto p-4 space-y-3"
+        style={{
+          backgroundImage: `url(${chatBg})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+        }}
+      >
         {messages.map((msg, index) => {
           const senderProfile = profilesMap[msg.user_id]
           const showDateStamp = isNewDay(msg.created_at, messages[index - 1]?.created_at)
@@ -259,7 +333,11 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
                     <div className="relative inline-block group">
                       {msg.content && (
                         <div className={`bg-white p-2 rounded shadow-sm ${isBeingEdited ? 'ring-2 ring-blue-400' : ''}`}>
-                          <span className="whitespace-pre-wrap">{linkify(msg.content)}</span>
+                          <span className="whitespace-pre-wrap">
+                            {mentionify(msg.content, serverMembers).map((part, i) =>
+                              typeof part === 'string' ? <span key={i}>{linkify(part)}</span> : part
+                            )}
+                          </span>
                         </div>
                       )}
                       {msg.attachment_url && (
@@ -455,7 +533,7 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
           </div>
         )}
 
-        <form onSubmit={handleFormSubmit} className="p-4 flex gap-2 items-end">
+        <form onSubmit={handleFormSubmit} className="px-4 pb-4 pt-2 flex gap-2 items-end">
           <input
             ref={fileInputRef}
             type="file"
@@ -464,7 +542,11 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
             className="hidden"
           />
 
-          {/* ---- EXPANDABLE ACTIONS: a plus-in-circle that rotates into an X, revealing more buttons ---- */}
+          {/* ---- EXPANDABLE ACTIONS: a plus-in-circle that rotates into an X, revealing more buttons.
+               Wrapped in "relative" so every popover below anchors to THIS one stable spot, rather
+               than trying to align under whichever icon was clicked (not possible once popovers
+               must render outside the sliding row's clipping container). ---- */}
+          <div className="relative">
           <button
             type="button"
             onClick={() => setShowActions(!showActions)}
@@ -488,6 +570,44 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
             </svg>
           </button>
 
+          {showGifPicker && (
+            <GifPicker onSelect={handleSendGif} onClose={() => setShowGifPicker(false)} />
+          )}
+          {showPollCreator && (
+            <PollCreator
+              onCreate={(pollData) => {
+                handleCreatePoll(pollData)
+                setShowPollCreator(false)
+                setShowActions(false)
+              }}
+              onClose={() => setShowPollCreator(false)}
+            />
+          )}
+          {showChecklistCreator && (
+            <ChecklistCreator
+              onCreate={(checklistData) => {
+                handleCreateChecklist(checklistData)
+                setShowChecklistCreator(false)
+                setShowActions(false)
+              }}
+              onClose={() => setShowChecklistCreator(false)}
+            />
+          )}
+          {showSchedulePicker && (
+            <ScheduleMessagePicker
+              messageText={newMessage}
+              channelId={selectedChannelId}
+              currentUserId={currentUserId}
+              currentUserEmail={currentUserEmail}
+              onScheduled={() => {
+                setNewMessage('')
+                setShowActions(false)
+              }}
+              onClose={() => setShowSchedulePicker(false)}
+            />
+          )}
+          </div>
+
           <div
             className={`flex items-center gap-2 overflow-hidden transition-all duration-300 ease-in-out ${
               showActions ? 'max-w-[240px] opacity-100' : 'max-w-0 opacity-0'
@@ -504,104 +624,65 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
               >
                 <img src={attachIcon} alt="Attach file" className="w-6 h-6" />
               </button>
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowGifPicker(!showGifPicker)}
-                  className="mb-1 text-xs font-bold border border-gray-300 rounded px-1.5 py-1 text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-colors flex-shrink-0"
-                  title="Send a GIF"
-                >
-                  GIF
-                </button>
-                {showGifPicker && (
-                  <GifPicker onSelect={handleSendGif} onClose={() => setShowGifPicker(false)} />
-                )}
-              </div>
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowPollCreator(!showPollCreator)}
-                  className="mb-1 text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0"
-                  title="Create a poll"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="18" y1="20" x2="18" y2="10" />
-                    <line x1="12" y1="20" x2="12" y2="4" />
-                    <line x1="6" y1="20" x2="6" y2="14" />
-                  </svg>
-                </button>
-                {showPollCreator && (
-                  <PollCreator
-                    onCreate={(pollData) => {
-                      handleCreatePoll(pollData)
-                      setShowPollCreator(false)
-                      setShowActions(false)
-                    }}
-                    onClose={() => setShowPollCreator(false)}
-                  />
-                )}
-              </div>
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowChecklistCreator(!showChecklistCreator)}
-                  className="mb-1 text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0"
-                  title="Create a checklist"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M9 11l3 3L22 4" />
-                    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-                  </svg>
-                </button>
-                {showChecklistCreator && (
-                  <ChecklistCreator
-                    onCreate={(checklistData) => {
-                      handleCreateChecklist(checklistData)
-                      setShowChecklistCreator(false)
-                      setShowActions(false)
-                    }}
-                    onClose={() => setShowChecklistCreator(false)}
-                  />
-                )}
-              </div>
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowSchedulePicker(!showSchedulePicker)}
-                  className="mb-1 text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0"
-                  title="Schedule a message"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10" />
-                    <polyline points="12 6 12 12 16 14" />
-                  </svg>
-                </button>
-                {showSchedulePicker && (
-                  <ScheduleMessagePicker
-                    messageText={newMessage}
-                    channelId={selectedChannelId}
-                    currentUserId={currentUserId}
-                    currentUserEmail={currentUserEmail}
-                    onScheduled={() => {
-                      setNewMessage('')
-                      setShowActions(false)
-                    }}
-                    onClose={() => setShowSchedulePicker(false)}
-                  />
-                )}
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowGifPicker(!showGifPicker)}
+                className="mb-1 text-xs font-bold border border-gray-300 rounded px-1.5 py-1 text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-colors flex-shrink-0"
+                title="Send a GIF"
+              >
+                GIF
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowPollCreator(!showPollCreator)}
+                className="mb-1 text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0"
+                title="Create a poll"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="20" x2="18" y2="10" />
+                  <line x1="12" y1="20" x2="12" y2="4" />
+                  <line x1="6" y1="20" x2="6" y2="14" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowChecklistCreator(!showChecklistCreator)}
+                className="mb-1 text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0"
+                title="Create a checklist"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 11l3 3L22 4" />
+                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowSchedulePicker(!showSchedulePicker)}
+                className="mb-1 text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0"
+                title="Schedule a message"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+              </button>
                    </div>
 
-          <textarea
-            ref={textareaRef}
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            onKeyDown={handleInputKeyDown}
-            placeholder={pendingFile ? 'Add a caption...' : 'Type a message...'}
-            rows={Math.min(newMessage.split('\n').length, 6)}
-            className="flex-1 border rounded p-2 resize-none"
-          />
-          <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-600/90">
+          <div className="relative flex-1">
+            {mentionQuery !== null && (
+              <MentionAutocomplete members={serverMembers} query={mentionQuery} onSelect={handleSelectMention} />
+            )}
+            <textarea
+              ref={textareaRef}
+              value={newMessage}
+              onChange={handleInputChange}
+              onKeyDown={handleInputKeyDown}
+              placeholder={pendingFile ? 'Add a caption...' : 'Type a message...'}
+              rows={Math.min(newMessage.split('\n').length, 6)}
+              className="block w-full border rounded px-2 py-1.5 resize-none"
+            />
+          </div>
+          <button type="submit" className="bg-blue-600 text-white px-4 py-[7px] rounded hover:bg-blue-600/90">
             {editingMessage ? 'Save' : 'Send'}
           </button>
         </form>

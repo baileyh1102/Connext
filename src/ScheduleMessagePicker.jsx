@@ -13,11 +13,9 @@ const PRESETS = [
   { label: 'Next week', getDate: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
 ]
 
-// ScheduleMessagePicker lets the user schedule the current composer text to
-// send later — via a quick preset or a custom date/time — and includes a
-// "Pending" tab to view/cancel messages they've already scheduled but that
-// haven't sent yet.
-function ScheduleMessagePicker({ messageText, channelId, currentUserId, currentUserEmail, onScheduled, onClose }) {
+// ScheduleMessagePicker works for BOTH channel messages and DMs — pass
+// channelId for a channel, or conversationId for a DM, never both.
+function ScheduleMessagePicker({ messageText, channelId, conversationId, currentUserId, currentUserEmail, onScheduled, onClose }) {
   const [tab, setTab] = useState('new')
   const [customDateTime, setCustomDateTime] = useState('')
   const [pending, setPending] = useState([])
@@ -50,7 +48,8 @@ function ScheduleMessagePicker({ messageText, channelId, currentUserId, currentU
   const scheduleFor = async (date) => {
     if (!messageText.trim()) return
     await supabase.from('scheduled_messages').insert({
-      channel_id: channelId,
+      channel_id: channelId || null,
+      conversation_id: conversationId || null,
       user_id: currentUserId,
       user_email: currentUserEmail,
       content: messageText.trim(),

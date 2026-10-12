@@ -1,12 +1,17 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
+import StatusDot from './StatusDot'
+import { usePresence, getEffectiveStatus } from './usePresence'
 
 // DMSidebar lists the current user's DM conversations (most recent first),
 // with a picker to start a new one, and a blue unread dot for conversations
 // with new messages since this user last opened them.
 function DMSidebar({ currentUserId, selectedConversation, onSelectConversation, onStartDM }) {
+  const onlineUserIds = usePresence()
   const [conversations, setConversations] = useState([])
   const [unreadConversationIds, setUnreadConversationIds] = useState(new Set())
+  const [archivedConversationIds, setArchivedConversationIds] = useState(new Set())
+  const [openMenuId, setOpenMenuId] = useState(null)
   const [showNewMessage, setShowNewMessage] = useState(false)
   const [searchText, setSearchText] = useState('')
   const [searchResults, setSearchResults] = useState([])
@@ -27,7 +32,7 @@ function DMSidebar({ currentUserId, selectedConversation, onSelectConversation, 
     const otherIds = convoRows.map((c) => (c.user_a === currentUserId ? c.user_b : c.user_a))
     const { data: profileRows } = await supabase
       .from('profiles')
-      .select('user_id, display_name, avatar_url')
+      .select('user_id, display_name, avatar_url, status')
       .in('user_id', otherIds)
 
     const profileMap = {}
@@ -71,17 +76,58 @@ function DMSidebar({ currentUserId, selectedConversation, onSelectConversation, 
     setUnreadConversationIds(unread)
   }
 
+  const fetchArchived = async () => {
+    const { data } = await supabase
+      .from('dm_conversation_archives')
+      .select('conversation_id')
+      .eq('user_id', currentUserId)
+    setArchivedConversationIds(new Set((data || []).map((a) => a.conversation_id)))
+  }
+
   useEffect(() => {
     fetchConversations()
+    fetchArchived()
 
     const channel = supabase
       .channel('dm-sidebar')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_conversations' }, fetchConversations)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'dm_messages' }, fetchConversations)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'dm_messages' }, () => {
+        fetchConversations()
+        fetchArchived() // new activity should "un-archive" a conversation for the recipient
+      })
       .subscribe()
 
     return () => supabase.removeChannel(channel)
   }, [currentUserId])
+
+    const handleArchive = async (conversationId) => {
+    await supabase.from('dm_conversation_archives').upsert(
+      { user_id: currentUserId, conversation_id: conversationId },
+      { onConflict: 'user_id,conversation_id' }
+    )
+    setArchivedConversationIds((current) => new Set(current).add(conversationId))
+    setOpenMenuId(null)
+  }
+
+  const handleUnarchive = async (conversationId) => {
+    await supabase.from('dm_conversation_archives').delete().eq('user_id', currentUserId).eq('conversation_id', conversationId)
+    setArchivedConversationIds((current) => {
+      const updated = new Set(current)
+      updated.delete(conversationId)
+      return updated
+    })
+    setOpenMenuId(null)
+  }
+
+  const handleDeleteConversation = async (conversationId) => {
+    if (!window.confirm('Permanently delete this conversation? This deletes it for both people and cannot be undone.')) return
+    await supabase.from('dm_conversations').delete().eq('id', conversationId)
+    setConversations((current) => current.filter((c) => c.id !== conversationId))
+    if (selectedConversation?.id === conversationId) {
+      onSelectConversation(null)
+    }
+    setOpenMenuId(null)
+  }
 
   const markConversationRead = async (conversationId) => {
     setUnreadConversationIds((current) => {
@@ -158,28 +204,85 @@ function DMSidebar({ currentUserId, selectedConversation, onSelectConversation, 
       )}
 
       <div className="flex-1 overflow-y-auto p-2">
-        {conversations.length === 0 && (
+        {conversations.filter((c) => !archivedConversationIds.has(c.id)).length === 0 && (
           <p className="text-sm text-gray-500 px-2 mt-2">No conversations yet.</p>
         )}
-        {conversations.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => { onSelectConversation(c); markConversationRead(c.id) }}
-            className={`w-full flex items-center gap-2 p-2 rounded text-left ${
-              selectedConversation?.id === c.id ? 'bg-gray-700 text-white' : 'hover:bg-gray-700'
-            }`}
-          >
-            {c.otherProfile?.avatar_url ? (
-              <img src={c.otherProfile.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full object-cover" />
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-gray-500" />
+        {conversations.filter((c) => !archivedConversationIds.has(c.id)).map((c) => (
+          <div key={c.id} className="group relative">
+            <button
+              onClick={() => { onSelectConversation(c); markConversationRead(c.id) }}
+              className={`w-full flex items-center gap-2 p-2 rounded text-left ${
+                selectedConversation?.id === c.id ? 'bg-gray-700 text-white' : 'hover:bg-gray-700'
+              }`}
+            >
+              <div className="relative flex-shrink-0">
+                {c.otherProfile?.avatar_url ? (
+                  <img src={c.otherProfile.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full object-cover" />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-gray-500" />
+                )}
+                <StatusDot status={getEffectiveStatus(c.otherProfile?.user_id, c.otherProfile?.status, onlineUserIds)} size="w-2.5 h-2.5" />
+              </div>
+              <span className="text-sm truncate flex-1">{c.otherProfile?.display_name || 'A member'}</span>
+              {unreadConversationIds.has(c.id) && (
+                <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
+              )}
+            </button>
+
+            <button
+              onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === c.id ? null : c.id) }}
+              className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white px-1 opacity-0 group-hover:opacity-100"
+            >
+              ⋮
+            </button>
+
+            {openMenuId === c.id && (
+              <div className="absolute right-0 top-9 bg-gray-900 border border-gray-700 rounded shadow-lg z-20 w-32">
+                <button
+                  onClick={() => handleArchive(c.id)}
+                  className="w-full text-left px-3 py-2 text-sm text-gray-200 hover:bg-gray-800"
+                >
+                  Archive
+                </button>
+                <button
+                  onClick={() => handleDeleteConversation(c.id)}
+                  className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-gray-800"
+                >
+                  Delete
+                </button>
+              </div>
             )}
-            <span className="text-sm truncate flex-1">{c.otherProfile?.display_name || 'A member'}</span>
-            {unreadConversationIds.has(c.id) && (
-              <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
-            )}
-          </button>
+          </div>
         ))}
+
+        {conversations.some((c) => archivedConversationIds.has(c.id)) && (
+          <>
+            <p className="text-xs font-semibold text-gray-500 uppercase mt-4 mb-1 px-2">Archived</p>
+            {conversations.filter((c) => archivedConversationIds.has(c.id)).map((c) => (
+              <div key={c.id} className="group relative opacity-60">
+                <button
+                  onClick={() => { onSelectConversation(c); markConversationRead(c.id) }}
+                  className={`w-full flex items-center gap-2 p-2 rounded text-left ${
+                    selectedConversation?.id === c.id ? 'bg-gray-700 text-white' : 'hover:bg-gray-700'
+                  }`}
+                >
+                  {c.otherProfile?.avatar_url ? (
+                    <img src={c.otherProfile.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full object-cover" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-gray-500" />
+                  )}
+                  <span className="text-sm truncate flex-1">{c.otherProfile?.display_name || 'A member'}</span>
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleUnarchive(c.id) }}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 text-xs text-blue-400 hover:text-blue-300 opacity-0 group-hover:opacity-100 px-1"
+                >
+                  Unarchive
+                </button>
+              </div>
+            ))}
+          </>
+        )}
       </div>
     </div>
   )

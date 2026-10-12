@@ -5,10 +5,11 @@ import dmIcon from './assets/Mascot.png'
 // between them, create new ones, or join an existing one via invite code.
 // The "+" button now opens a small choice menu (Create / Join) rather than
 // jumping straight into the create form.
-function ServerRail({ servers, selectedServer, setSelectedServer, onSelectServer, onAddServer, onDeleteServer, onJoinServer, onOpenDMs, isDMActive }) {
+function ServerRail({ servers, selectedServer, setSelectedServer, onSelectServer, onAddServer, onDeleteServer, onJoinServer, onLeaveServer, currentUserId, onOpenDMs, isDMActive }) {
   const [mode, setMode] = useState(null) // null | 'menu' | 'create' | 'join'
   const [newServerName, setNewServerName] = useState('')
   const [joinCode, setJoinCode] = useState('')
+  const [leaveTarget, setLeaveTarget] = useState(null)
 
   const handleCreateSubmit = (e) => {
     e.preventDefault()
@@ -26,7 +27,7 @@ function ServerRail({ servers, selectedServer, setSelectedServer, onSelectServer
   }
 
   return (
-    <div className="w-16 bg-indigo-900 flex flex-col items-center py-3 gap-2 overflow-y-auto relative">
+    <div className="w-16 bg-indigo-900 flex flex-col items-center py-3 gap-2 overflow-y-auto themed-scroll-indigo relative">
       <button
         onClick={onOpenDMs}
         title="Direct Messages"
@@ -45,9 +46,7 @@ function ServerRail({ servers, selectedServer, setSelectedServer, onSelectServer
           onClick={() => onSelectServer(srv)}
           onContextMenu={(e) => {
             e.preventDefault()
-            if (window.confirm(`Delete "${srv.name}"? This will also delete all its channels and messages.`)) {
-              onDeleteServer(srv.id)
-            }
+            setLeaveTarget(srv)
           }}
           title={srv.name}
           className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold cursor-pointer transition-all flex-shrink-0 overflow-hidden ${
@@ -70,6 +69,47 @@ function ServerRail({ servers, selectedServer, setSelectedServer, onSelectServer
       >
         <span className="-translate-y-px">+</span>
       </button>
+
+            {/* ---- LEAVE SERVER MENU ---- */}
+      {leaveTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setLeaveTarget(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-lg shadow-lg w-80 p-5">
+            <h3 className="text-lg font-bold text-gray-900 mb-2 truncate">{leaveTarget.name}</h3>
+            {leaveTarget.created_by === currentUserId ? (
+              <>
+                <p className="text-sm text-gray-600 mb-4">
+                  You own this server, so you can't leave it. To remove it, open Server Settings → General → Danger Zone.
+                </p>
+                <div className="flex justify-end">
+                  <button onClick={() => setLeaveTarget(null)} className="text-sm text-gray-500 hover:text-gray-700 px-3 py-2">
+                    Close
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-gray-600 mb-4">
+                  Leave this server? You'll lose access to its channels until you're invited again.
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setLeaveTarget(null)} className="text-sm text-gray-500 hover:text-gray-700 px-3 py-2">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await onLeaveServer(leaveTarget.id)
+                      setLeaveTarget(null)
+                    }}
+                    className="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700"
+                  >
+                    Leave server
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ---- CHOICE MENU: Create or Join — full centered overlay, so it's never clipped by the rail's own overflow-y-auto ---- */}
       {mode === 'menu' && (

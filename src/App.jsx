@@ -14,7 +14,12 @@ import CalendarPage from './CalendarPage'
 import DMSidebar from './DMSidebar'
 import DMChatView from './DMChatview'
 import NotificationBell from './NotificationBell'
+import ContactSupportModal from './ContactSupportModal'
 import ChannelViewerCount from './ChannelViewerCount'
+import { extractMentionedUserIds } from './mentions'
+import StatusDot from './StatusDot'
+import { initPresence, teardownPresence } from './presence'
+import { usePresence, getEffectiveStatus } from './usePresence'
 
 function App() {
   // ---- AUTH STATE ----
@@ -69,6 +74,19 @@ function App() {
   const [canManageCalendar, setCanManageCalendar] = useState(false)
   const [canEditPosts, setCanEditPosts] = useState(false)
   const [canDeletePosts, setCanDeletePosts] = useState(false)
+  const [serverMembers, setServerMembers] = useState([]) // [{ user_id, display_name, avatar_url }], for @mentions
+
+  // Load the current server's members (for @mention autocomplete + notifications)
+  useEffect(() => {
+    if (!selectedServer) return
+    const fetchMembers = async () => {
+      const { data: memberRows } = await supabase.from('server_members').select('user_id').eq('server_id', selectedServer.id)
+      const ids = [...new Set([...(memberRows || []).map((m) => m.user_id), selectedServer.created_by])]
+      const { data: profileRows } = await supabase.from('profiles').select('user_id, display_name, avatar_url').in('user_id', ids)
+      setServerMembers(profileRows || [])
+    }
+    fetchMembers()
+  }, [selectedServer])
 
   useEffect(() => {
     if (!selectedServer || !session) return
@@ -98,6 +116,7 @@ function App() {
 
   // ---- PROFILE / DASHBOARD STATE ----
   const [showProfile, setShowProfile] = useState(false)
+  const [showContactSupport, setShowContactSupport] = useState(false)
   const [showDashboard, setShowDashboard] = useState(false)
   const [profile, setProfile] = useState(null)
   const [profilesMap, setProfilesMap] = useState({})
@@ -113,6 +132,18 @@ function App() {
 
     return () => subscription.unsubscribe()
   }, [])
+
+  // Join the shared presence channel once logged in, so other people can see
+  // this user as genuinely "online" — leave it on logout
+  useEffect(() => {
+    if (session) {
+      initPresence(session.user.id)
+    } else {
+      teardownPresence()
+    }
+  }, [session])
+
+  const onlineUserIds = usePresence()
 
   // Fetches the servers the logged-in user belongs to. Lives here (rather than
   // inside ServerRail) so both ServerRail and ChannelSidebar can read/act on
@@ -290,12 +321,30 @@ function App() {
         .select('user_id, display_name, avatar_url, bio, contact_info')
         .in('user_id', userIds)
 
-      const map = {}
-      data?.forEach((p) => { map[p.user_id] = p })
-      setProfilesMap(map)
+      // Merge into the existing map instead of replacing it, so profiles we
+      // already know about never disappear while a new fetch is in flight
+      setProfilesMap((current) => {
+        const next = { ...current }
+        data?.forEach((p) => { next[p.user_id] = p })
+        return next
+      })
     }
     fetchProfiles()
   }, [messages])
+
+  // Seed the map from the server's member list too, so names/avatars show
+  // immediately instead of waiting on the per-message fetch above (which
+  // still runs afterward and fills in the extra bio/contact fields)
+  useEffect(() => {
+    if (serverMembers.length === 0) return
+    setProfilesMap((current) => {
+      const next = { ...current }
+      serverMembers.forEach((p) => {
+        if (!next[p.user_id]) next[p.user_id] = p
+      })
+      return next
+    })
+  }, [serverMembers])
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -478,6 +527,26 @@ function App() {
     }
   }
 
+    // Leaves a server: removes only the current user's membership row.
+  const handleLeaveServer = async (serverId) => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    const { error } = await supabase
+      .from('server_members')
+      .delete()
+      .eq('server_id', serverId)
+      .eq('user_id', user.id)
+    if (error) {
+      window.alert("Couldn't leave the server. Try again.")
+      return
+    }
+    setServers((current) => current.filter((s) => s.id !== serverId))
+    if (selectedServer?.id === serverId) {
+      setSelectedServer(null)
+      setSelectedChannel(null)
+    }
+  }
+
   // Updates a message's content and marks it as edited.
   // Realtime doesn't broadcast UPDATE events by default (only INSERT is set up),
   // so we also update local state directly for instant feedback.
@@ -578,15 +647,31 @@ function App() {
   }
 
   const handleSendMessage = async (e) => {
-    e.preventDefault()
+       e.preventDefault()
     if (!newMessage.trim() || !selectedChannel) return
+
+    const mentionedIds = extractMentionedUserIds(newMessage, serverMembers).filter((id) => id !== session.user.id)
+
     const { error } = await supabase.from('messages').insert({
       content: newMessage,
       user_id: session.user.id,
       user_email: session.user.email,
       channel_id: selectedChannel.id,
+      mentioned_user_ids: mentionedIds,
     })
     if (error) console.log('Send message error:', error)
+
+    if (mentionedIds.length > 0) {
+      await supabase.from('notifications').insert(
+        mentionedIds.map((userId) => ({
+          recipient_id: userId,
+          sender_id: session.user.id,
+          type: 'mention',
+          content: `${profile?.display_name || 'Someone'} mentioned you in #${selectedChannel.name}: "${newMessage.trim().slice(0, 100)}"`,
+        }))
+      )
+    }
+
     setNewMessage('')
   }
 
@@ -677,13 +762,28 @@ function App() {
   // Sends a reply inside the currently open thread
   const handleSendReply = async (replyText) => {
     if (!replyText.trim() || !activeThread) return
+
+    const mentionedIds = extractMentionedUserIds(replyText, serverMembers).filter((id) => id !== session.user.id)
+
     await supabase.from('messages').insert({
       content: replyText,
       user_id: session.user.id,
       user_email: session.user.email,
       channel_id: selectedChannel.id,
       parent_id: activeThread.id,
+      mentioned_user_ids: mentionedIds,
     })
+
+    if (mentionedIds.length > 0) {
+      await supabase.from('notifications').insert(
+        mentionedIds.map((userId) => ({
+          recipient_id: userId,
+          sender_id: session.user.id,
+          type: 'mention',
+          content: `${profile?.display_name || 'Someone'} mentioned you in a thread reply: "${replyText.trim().slice(0, 100)}"`,
+        }))
+      )
+    }
   }
 
   // ================= LOGGED-IN VIEW =================
@@ -700,6 +800,8 @@ function App() {
           onJoinServer={handleJoinServer}
           onOpenDMs={() => setCurrentPage('dm')}
           isDMActive={currentPage === 'dm'}
+          onLeaveServer={handleLeaveServer}
+          currentUserId={session.user.id}
         />
         {/* Channel sidebar only makes sense on the Chat page — other pages (Prayer Wall, Calendar) aren't organized by channel */}
         {/* On mobile: a backdrop appears behind the open sidebar so tapping outside closes it */}
@@ -780,13 +882,14 @@ function App() {
             </div>
             <div className="flex items-center gap-3">
               <NotificationBell currentUserId={session.user.id} />
-              <button onClick={() => setShowDashboard(!showDashboard)} className="flex items-center gap-2">
-                {profile?.avatar_url ? (
-                  <img src={profile.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full object-cover" />
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-gray-300" />
-                )}
-              </button>
+            <button onClick={() => setShowDashboard(!showDashboard)} className="relative flex items-center gap-2">
+              {profile?.avatar_url ? (
+                <img src={profile.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full object-cover" />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-gray-300" />
+              )}
+              <StatusDot status={getEffectiveStatus(session.user.id, profile?.status, onlineUserIds)} />
+            </button>
             </div>
 
             {showDashboard && (
@@ -796,11 +899,13 @@ function App() {
                 onEditProfile={() => { setShowDashboard(false); setShowProfile(true) }}
                 onLogout={() => { setShowDashboard(false); handleLogout() }}
                 onClose={() => setShowDashboard(false)}
+                onlineUserIds={onlineUserIds}
+                onContactSupport={() => { setShowDashboard(false); setShowContactSupport(true) }}
               />
             )}
           </div>
 
-          {currentPage === 'chat' && (
+          {currentPage === 'chat' && selectedChannel && (
           <ChatView
             messages={messages}
             profilesMap={profilesMap}
@@ -823,7 +928,13 @@ function App() {
             reactionsMap={reactionsMap}
             onToggleReaction={handleToggleReaction}
             canManageMessages={canManageMessages}
+            serverMembers={serverMembers}
           />
+          )}
+          {currentPage === 'chat' && !selectedChannel && (
+            <div className="flex-1 flex items-center justify-center bg-gray-100 text-gray-400 text-center px-6">
+              <p className="text-lg font-medium">Add a channel to your new epic server!</p>
+            </div>
           )}
 
           {currentPage === 'home' && (
@@ -843,6 +954,7 @@ function App() {
             <DMChatView
               conversation={selectedConversation}
               currentUserId={session.user.id}
+              currentUserEmail={session.user.email}
               otherProfile={conversationOtherProfile}
               myProfile={profile}
             />
@@ -856,6 +968,7 @@ function App() {
 
         {currentPage === 'chat' && activeThread && (
           <ThreadPanel
+            serverMembers={serverMembers}
             parentMessage={activeThread}
             replies={threadReplies}
             profilesMap={profilesMap}
@@ -872,6 +985,14 @@ function App() {
         )}
 
         {showProfile && <Profile session={session} onClose={() => setShowProfile(false)} />}
+          
+        {showContactSupport && (
+          <ContactSupportModal
+            session={session}
+            senderName={profile?.display_name}
+            onClose={() => setShowContactSupport(false)}
+          />
+        )}
 
         {showServerSettings && selectedServer && (
           <ServerSettings
@@ -879,6 +1000,7 @@ function App() {
             currentUserId={session.user.id}
             onClose={() => setShowServerSettings(false)}
             onDeleteServer={handleDeleteServer}
+            onLeaveServer={handleLeaveServer}
             onServerUpdated={(updates) => {
               setServers((current) => current.map((s) => (s.id === selectedServer.id ? { ...s, ...updates } : s)))
               setSelectedServer((prev) => ({ ...prev, ...updates }))

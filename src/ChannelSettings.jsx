@@ -381,7 +381,7 @@ function ChannelSettings({ channel, server, canManageChannels, onClose, onDelete
                   </div>
 
                   <p className="text-xs text-gray-400 mt-6">
-                    The server creator can always see and manage everything, regardless of these settings.
+                    The server owner has full permission, regardless of these settings.
                   </p>
                 </div>
               </div>

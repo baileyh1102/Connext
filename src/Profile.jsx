@@ -1,12 +1,18 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabaseClient'
 
+const STATUS_OPTIONS = [
+  { value: 'online', label: 'Online', color: 'bg-green-500' },
+  { value: 'busy', label: 'Busy', color: 'bg-red-500' },
+]
+
 function Profile({ session, onClose }) {
   const [displayName, setDisplayName] = useState('')
   const [bio, setBio] = useState('')
   const [contactInfo, setContactInfo] = useState('')
   const [avatarUrl, setAvatarUrl] = useState('')
   const [avatarFile, setAvatarFile] = useState(null)
+  const [status, setStatus] = useState('online')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
   const fileInputRef = useRef(null)
@@ -24,6 +30,7 @@ function Profile({ session, onClose }) {
         setBio(data.bio || '')
         setContactInfo(data.contact_info || '')
         setAvatarUrl(data.avatar_url || '')
+        setStatus(data.status || 'online')
       }
     }
     loadProfile()
@@ -66,6 +73,7 @@ function Profile({ session, onClose }) {
         bio: bio,
         contact_info: contactInfo,
         avatar_url: finalAvatarUrl,
+        status: status,
       }, { onConflict: 'user_id' })
 
     if (error) {
@@ -120,6 +128,24 @@ function Profile({ session, onClose }) {
             className="w-full p-2 mb-4 border rounded"
             placeholder="How you'll appear in chat"
           />
+
+          <label className="block text-sm font-medium mb-1">Status</label>
+          <p className="text-xs text-gray-400 mb-2">Shown while you're actually connected — you'll automatically appear offline otherwise.</p>
+          <div className="flex gap-2 mb-4">
+            {STATUS_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setStatus(opt.value)}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded text-sm border ${
+                  status === opt.value ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                <span className={`w-2.5 h-2.5 rounded-full ${opt.color}`} />
+                {opt.label}
+              </button>
+            ))}
+          </div>
 
           <label className="block text-sm font-medium mb-1">Bio</label>
           <textarea
