@@ -57,6 +57,7 @@ function App() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false) // controls the overlay sidebar on small screens only
   const [mobileServersOpen, setMobileServersOpen] = useState(false)
   const [homeBubblesMode, setHomeBubblesMode] = useState(false)
+  const [homeSwipeDir, setHomeSwipeDir] = useState(1) // 1 = wall exits right, -1 = exits left
   const swipeStart = useRef(null)
 
   // ---- CHAT STATE ----
@@ -828,8 +829,8 @@ function App() {
     if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return
 
     // Community Wall: any sideways swipe toggles "bubbles only"
-    if (currentPage === 'home') {
-      setHomeBubblesMode((v) => !v)
+    if (!homeBubblesMode) setHomeSwipeDir(dx > 0 ? 1 : -1) // remember which way it left
+       setHomeBubblesMode(!homeBubblesMode)
       return
     }
 
@@ -923,7 +924,7 @@ function App() {
             <DMSidebar
               currentUserId={session.user.id}
               selectedConversation={selectedConversation}
-                            onSelectConversation={(c) => {
+              onSelectConversation={(c) => {
                 setSelectedConversation(c)
                 setMobileSidebarOpen(false)
                 setMobileServersOpen(false)
@@ -1028,7 +1029,7 @@ function App() {
 
           {currentPage === 'home' && (
             <HomePage
-              bubblesOnly={homeBubblesMode}
+              bubblesOnly={homeBubblesMode} swipeDir={homeSwipeDir}
               selectedServer={selectedServer}
               session={session}
               isAdmin={profile?.is_admin || false}
@@ -1259,6 +1260,4 @@ function App() {
       </form>
     </div>
   )
-}
-
-export default App
+  export default App

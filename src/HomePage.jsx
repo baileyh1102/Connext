@@ -51,7 +51,7 @@ function PostMenu({ onEdit, onDelete }) {
 // and optional anonymous posting. Laid out like CalendarPage — a tall
 // content rectangle over the mascot background, with a "+ Post" button to
 // reveal the composer instead of showing it up front.
-function HomePage({ selectedServer, session, isAdmin, canEditPosts, canDeletePosts, bubblesOnly = false }) {
+function HomePage({ selectedServer, session, isAdmin, canEditPosts, canDeletePosts, bubblesOnly = false, swipeDir = 1 }) {
   const [posts, setPosts] = useState([])
   const [postsProfilesMap, setPostsProfilesMap] = useState({})
   const [postContent, setPostContent] = useState('')
@@ -67,6 +67,11 @@ function HomePage({ selectedServer, session, isAdmin, canEditPosts, canDeletePos
   const [commentsMap, setCommentsMap] = useState({}) // { postId: [comment, ...] }
   const [commentInputs, setCommentInputs] = useState({}) // { postId: 'text being typed' }
   const [expandedComments, setExpandedComments] = useState({}) // { postId: true/false }
+
+  const [bubblesRevealed, setBubblesRevealed] = useState(false)
+useEffect(() => {
+  if (bubblesOnly) setBubblesRevealed(true)
+}, [bubblesOnly])
 
   // ---- POSTS: fetch + realtime ----
   useEffect(() => {
@@ -293,18 +298,30 @@ function HomePage({ selectedServer, session, isAdmin, canEditPosts, canDeletePos
       className="relative flex-1 h-full overflow-hidden bg-gray-100"
       style={{ backgroundImage: `url(${homeBg})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
     >
-      <FloatingBubbles
-        selectedServer={selectedServer}
-        currentUserId={session.user.id}
-        currentUserName={postsProfilesMap[session.user.id]?.display_name}
-      />
+      {bubblesRevealed && (
+        <div
+          className={`absolute inset-0 transition-opacity duration-500 ${
+            bubblesOnly ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
+        >
+          <FloatingBubbles
+            selectedServer={selectedServer}
+            currentUserId={session.user.id}
+            currentUserName={postsProfilesMap[session.user.id]?.display_name}
+          />
+        </div>
+      )}
       <BirthdayCelebration session={session} />    
       {bubblesOnly && (
         <p className="absolute bottom-4 left-0 right-0 text-center text-xs text-gray-500 pointer-events-none z-10">
           Swipe to bring the wall back
         </p>
       )} 
-      <div className={`relative z-10 max-w-xl mx-auto w-full h-full flex flex-col pb-3 pointer-events-none ${bubblesOnly ? 'hidden' : ''}`}>
+      <div
+  aria-hidden={bubblesOnly}
+  style={{ transform: bubblesOnly ? `translateX(${swipeDir * 110}%)` : 'translateX(0)' }}
+  className="relative z-10 max-w-xl mx-auto w-full h-full flex flex-col pb-3 pointer-events-none transition-transform duration-300 ease-in-out"
+>
         <div className="flex flex-col gap-3 mb-4">
           <DailyVerseCard />
           <BirthdayBanner selectedServer={selectedServer} />
