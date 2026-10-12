@@ -17,7 +17,11 @@ function GifPicker({ onSelect, onClose }) {
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    document.addEventListener('touchstart', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('touchstart', handleClickOutside)
+    }
   }, [onClose])
 
   useEffect(() => {
@@ -45,7 +49,7 @@ function GifPicker({ onSelect, onClose }) {
   return (
     <div
       ref={pickerRef}
-      className="absolute bottom-full mb-2 left-0 bg-white border rounded-lg shadow-lg w-80 h-96 flex flex-col z-20"
+      className="absolute bottom-full mb-2 left-0 bg-white border rounded-lg shadow-lg w-80 h-96 flex flex-col z-20 max-md:fixed max-md:left-2 max-md:right-2 max-md:w-auto max-md:h-[55vh] max-md:bottom-24"
     >
       <div className="p-2 border-b">
         <input
