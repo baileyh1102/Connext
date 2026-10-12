@@ -14,12 +14,16 @@ export default defineConfig({
         skipWaiting: true,
         clientsClaim: true,
       },
-      includeAssets: ['favicon-32x32.png', 'apple-touch-icon.png'],
+      includeAssets: ['favicon-32x32.png', 'apple-icon.png'],
       manifest: {
         name: 'Connext',
         short_name: 'Connext',
         description: 'A community chat and connection app',
         theme_color: '#ffffff',
+        icons: [
+          { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+          ],
         background_color: '#ffffff',
         display: 'standalone',
         start_url: '/',
