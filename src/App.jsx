@@ -55,6 +55,8 @@ function App() {
   }, [selectedConversation])
   const [showServerSettings, setShowServerSettings] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false) // controls the overlay sidebar on small screens only
+  const [homeBubblesMode, setHomeBubblesMode] = useState(false)
+  const swipeStart = useRef(null)
 
   // ---- CHAT STATE ----
   const [messages, setMessages] = useState([]) // top-level messages only (parent_id is null)
@@ -809,33 +811,85 @@ function App() {
     }
   }
 
+    // ---- Phone swipes ----
+  const handleTouchStart = (e) => {
+    const t = e.touches[0]
+    swipeStart.current = { x: t.clientX, y: t.clientY }
+  }
+
+  const handleTouchEnd = (e) => {
+    const s = swipeStart.current
+    swipeStart.current = null
+    if (!s || window.innerWidth >= 768) return
+    const t = e.changedTouches[0]
+    const dx = t.clientX - s.x
+    const dy = t.clientY - s.y
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return
+
+    // Community Wall: any sideways swipe toggles "bubbles only"
+    if (currentPage === 'home') {
+      setHomeBubblesMode((v) => !v)
+      return
+    }
+
+    // Chat / DMs: right opens channels, then servers. Left closes in reverse.
+    if (currentPage === 'chat' || currentPage === 'dm') {
+      if (dx > 0) {
+        if (!mobileSidebarOpen) setMobileSidebarOpen(true)
+        else if (!mobileServersOpen) setMobileServersOpen(true)
+      } else {
+        if (mobileServersOpen) setMobileServersOpen(false)
+        else if (mobileSidebarOpen) setMobileSidebarOpen(false)
+      }
+    }
+  }
+
   // ================= LOGGED-IN VIEW =================
   if (session) {
     return (
-      <div className="flex h-dvh">
-        <ServerRail
-          servers={servers}
-          selectedServer={selectedServer}
-          setSelectedServer={setSelectedServer}
-          onSelectServer={handleSelectServer}
-          onAddServer={handleAddServer}
-          onDeleteServer={handleDeleteServer}
-          onJoinServer={handleJoinServer}
-          onOpenDMs={() => setCurrentPage('dm')}
-          isDMActive={currentPage === 'dm'}
-          onLeaveServer={handleLeaveServer}
-          currentUserId={session.user.id}
-        />
+      <div className="flex h-dvh w-full overflow-hidden" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+               <div
+          className={`flex flex-shrink-0 fixed md:static inset-y-0 z-50 md:z-auto transition-[left] duration-300 ease-in-out ${
+            mobileServersOpen ? 'left-0' : '-left-16'
+          } md:left-auto`}
+        >
+          <ServerRail
+            servers={servers}
+            selectedServer={selectedServer}
+            setSelectedServer={setSelectedServer}
+            onSelectServer={(srv) => {
+              handleSelectServer(srv)
+              setMobileServersOpen(false)
+            }}
+            onAddServer={handleAddServer}
+            onDeleteServer={handleDeleteServer}
+            onJoinServer={handleJoinServer}
+            onOpenDMs={() => {
+              setCurrentPage('dm')
+              setMobileServersOpen(false)
+              setMobileSidebarOpen(true)
+            }}
+            isDMActive={currentPage === 'dm'}
+            onLeaveServer={handleLeaveServer}
+            currentUserId={session.user.id}
+          />
+        </div>
         {/* Channel sidebar only makes sense on the Chat page — other pages (Prayer Wall, Calendar) aren't organized by channel */}
         {/* On mobile: a backdrop appears behind the open sidebar so tapping outside closes it */}
-        {mobileSidebarOpen && currentPage === 'chat' && (
-          <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setMobileSidebarOpen(false)} />
+        {mobileSidebarOpen && (currentPage === 'chat' || currentPage === 'dm') && (
+          <div
+            className="fixed inset-0 bg-black/50 z-30 md:hidden"
+            onClick={() => {
+              setMobileSidebarOpen(false)
+              setMobileServersOpen(false)
+            }}
+          />
         )}
 
         {/* Mobile: fixed overlay that slides over the chat area, toggled by the hamburger button.
             Desktop (md+): unchanged from before — pushes/slides inline based on currentPage. */}
         <div
-          className={`fixed md:static inset-y-0 left-16 md:left-auto z-40 md:z-auto h-full overflow-hidden transition-all duration-300 ease-in-out flex-shrink-0 ${
+          className={`fixed md:static inset-y-0 ${mobileServersOpen ? 'left-16' : 'left-0'} md:left-auto z-40 md:z-auto h-full overflow-hidden transition-all duration-300 ease-in-out flex-shrink-0 ${
             mobileSidebarOpen && currentPage === 'chat' ? 'w-56' : 'w-0'
           } ${currentPage === 'chat' ? 'md:w-56' : 'md:w-0'}`}
         >
@@ -856,9 +910,9 @@ function App() {
 
         {/* Same slide pattern, but for the DM sidebar — active when currentPage is 'dm' */}
         <div
-          className={`h-full overflow-hidden transition-all duration-300 ease-in-out flex-shrink-0 ${
-            currentPage === 'dm' ? 'w-56' : 'w-0'
-          }`}
+          className={`fixed md:static inset-y-0 ${mobileServersOpen ? 'left-16' : 'left-0'} md:left-auto z-40 md:z-auto h-full overflow-hidden transition-all duration-300 ease-in-out flex-shrink-0 ${
+            mobileSidebarOpen && currentPage === 'dm' ? 'w-56' : 'w-0'
+          } ${currentPage === 'dm' ? 'md:w-56' : 'md:w-0'}`}
         >
           <div
             className={`w-56 h-full transition-transform duration-300 ease-in-out ${
@@ -868,32 +922,32 @@ function App() {
             <DMSidebar
               currentUserId={session.user.id}
               selectedConversation={selectedConversation}
-              onSelectConversation={setSelectedConversation}
+                            onSelectConversation={(c) => {
+                setSelectedConversation(c)
+                setMobileSidebarOpen(false)
+                setMobileServersOpen(false)
+              }}
               onStartDM={handleStartDM}
             />
           </div>
         </div>
-        <div className="flex flex-col flex-1">
+      <div className="flex flex-col flex-1 min-w-0">
           {/* ---- HEADER: page switcher (Chat/Prayer Wall/Calendar) + avatar button that opens the dashboard dropdown ---- */}
-          <div className="h-[65px] bg-white shadow px-4 flex justify-between items-center relative">
+          <div className="h-[65px] bg-white shadow px-2 md:px-4 flex justify-between items-center relative">
             <img
               src={connextLogo}
               alt="Connext"
               className="hidden md:block absolute left-1/2 -translate-x-1/2 h-15"
             />
-            <div className="flex items-center gap-4">
-              {(currentPage === 'chat' || currentPage === 'dm') && (
-                <button
-                  onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
-                  className="md:hidden text-gray-600"
-                  aria-label="Toggle sidebar"
-                >
-                  <div className="flex flex-col gap-1">
-                    <span className="block w-5 h-0.5 bg-current"></span>
-                    <span className="block w-5 h-0.5 bg-current"></span>
-                    <span className="block w-5 h-0.5 bg-current"></span>
-                  </div>
-                </button>
+            <div className="flex items-center gap-2 md:gap-4">
+               {currentPage !== 'chat' && (
+                <span className="md:hidden font-heading font-semibold text-gray-900 truncate max-w-[9rem]">
+                  {currentPage === 'dm'
+                    ? conversationOtherProfile?.display_name || 'Messages'
+                    : currentPage === 'home'
+                      ? 'Home'
+                      : 'Calendar'}
+                </span>
               )}
               <div className="hidden md:block">
                 <PageNav currentPage={currentPage} setCurrentPage={setCurrentPage} />
@@ -979,6 +1033,7 @@ function App() {
 
           {currentPage === 'home' && (
             <HomePage
+              bubblesOnly={homeBubblesMode}
               selectedServer={selectedServer}
               session={session}
               isAdmin={profile?.is_admin || false}
@@ -1040,7 +1095,11 @@ function App() {
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setCurrentPage(tab.id)}
+                onClick={() => {
+                  setCurrentPage(tab.id)
+                  setMobileSidebarOpen(false)
+                  setMobileServersOpen(false)
+                }}
                 className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 ${
                   currentPage === tab.id ? 'text-blue-600' : 'text-gray-400'
                 }`}

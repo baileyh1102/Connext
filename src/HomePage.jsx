@@ -51,7 +51,7 @@ function PostMenu({ onEdit, onDelete }) {
 // and optional anonymous posting. Laid out like CalendarPage — a tall
 // content rectangle over the mascot background, with a "+ Post" button to
 // reveal the composer instead of showing it up front.
-function HomePage({ selectedServer, session, isAdmin, canEditPosts, canDeletePosts }) {
+function HomePage({ selectedServer, session, isAdmin, canEditPosts, canDeletePosts, bubblesOnly = false }) {
   const [posts, setPosts] = useState([])
   const [postsProfilesMap, setPostsProfilesMap] = useState({})
   const [postContent, setPostContent] = useState('')
@@ -298,8 +298,13 @@ function HomePage({ selectedServer, session, isAdmin, canEditPosts, canDeletePos
         currentUserId={session.user.id}
         currentUserName={postsProfilesMap[session.user.id]?.display_name}
       />
-      <BirthdayCelebration session={session} />     
-      <div className="relative z-10 max-w-xl mx-auto w-full h-full flex flex-col pb-3 pointer-events-none">
+      <BirthdayCelebration session={session} />    
+      {bubblesOnly && (
+        <p className="absolute bottom-4 left-0 right-0 text-center text-xs text-gray-500 pointer-events-none z-10">
+          Swipe to bring the wall back
+        </p>
+      )} 
+      <div className={`relative z-10 max-w-xl mx-auto w-full h-full flex flex-col pb-3 pointer-events-none ${bubblesOnly ? 'hidden' : ''}`}>
         <div className="flex flex-col gap-3 mb-4">
           <DailyVerseCard />
           <BirthdayBanner selectedServer={selectedServer} />
