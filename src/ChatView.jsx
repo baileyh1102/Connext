@@ -280,11 +280,11 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 bg-gray-100">
+    <div className="flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-x-hidden bg-gray-100">
       {/* ---- CHAT MESSAGE LIST ---- */}
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto p-4 space-y-3"
+        className="flex-1 overflow-y-auto overflow-x-hidden touch-pan-y p-4 space-y-3"
         style={{
           backgroundImage: `url(${chatBg})`,
           backgroundSize: 'cover',
