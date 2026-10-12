@@ -293,7 +293,7 @@ function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply
             </button>
           </div>
         )}
-        <form onSubmit={handleSubmit} className="p-4 border-t flex gap-2 items-end">
+        <form onSubmit={handleSubmit} className="p-4 max-md:pb-10 border-t flex gap-2 items-end">
           <div className="relative flex-1">
             {mentionQuery !== null && (
               <MentionAutocomplete members={serverMembers} query={mentionQuery} onSelect={handleSelectMention} />
