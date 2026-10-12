@@ -812,7 +812,7 @@ function App() {
   // ================= LOGGED-IN VIEW =================
   if (session) {
     return (
-      <div className="flex h-screen">
+      <div className="flex h-dvh">
         <ServerRail
           servers={servers}
           selectedServer={selectedServer}
@@ -895,12 +895,29 @@ function App() {
                   </div>
                 </button>
               )}
-              <PageNav currentPage={currentPage} setCurrentPage={setCurrentPage} />
+              <div className="hidden md:block">
+                <PageNav currentPage={currentPage} setCurrentPage={setCurrentPage} />
+              </div>
+              <button
+                type="button"
+                onClick={() => currentPage === 'chat' && setMobileSidebarOpen(true)}
+                className="md:hidden font-heading font-semibold text-gray-900 truncate max-w-[9rem] text-left"
+              >
+                {currentPage === 'chat'
+                  ? selectedChannel
+                    ? `# ${selectedChannel.name}`
+                    : 'Chat'
+                  : currentPage === 'dm'
+                    ? conversationOtherProfile?.display_name || 'Messages'
+                    : currentPage === 'home'
+                      ? 'Home'
+                      : 'Calendar'}
+              </button>
               {currentPage === 'chat' && selectedChannel && selectedServer && (
                 <ChannelViewerCount channel={selectedChannel} server={selectedServer} />
               )}
               {currentPage === 'dm' && (
-                <span className="text-gray-400 text-sm">{conversationOtherProfile?.display_name || '...'}</span>
+                <span className="hidden md:inline text-gray-400 text-sm">{conversationOtherProfile?.display_name || '...'}</span>
               )}
             </div>
             <div className="flex items-center gap-3">
@@ -987,6 +1004,64 @@ function App() {
               Select a conversation or start a new one
             </div>
           )}
+
+          {/* ---- PHONE BOTTOM BAR: Home / Chat / Calendar ---- */}
+          <div
+            className="md:hidden flex-shrink-0 bg-white border-t flex items-stretch"
+            style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+          >
+            {[
+              {
+                id: 'home',
+                label: 'Home',
+                icon: (
+                  <>
+                    <path d="M3 11l9-8 9 8" />
+                    <path d="M5 10v10h5v-6h4v6h5V10" />
+                  </>
+                ),
+              },
+              {
+                id: 'chat',
+                label: 'Chat',
+                icon: <path d="M21 12a8 8 0 0 1-11.5 7.2L4 20l1-4.5A8 8 0 1 1 21 12z" />,
+              },
+              {
+                id: 'calendar',
+                label: 'Calendar',
+                icon: (
+                  <>
+                    <rect x="3" y="5" width="18" height="16" rx="2" />
+                    <path d="M3 10h18M8 3v4M16 3v4" />
+                  </>
+                ),
+              },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setCurrentPage(tab.id)}
+                className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 ${
+                  currentPage === tab.id ? 'text-blue-600' : 'text-gray-400'
+                }`}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  {tab.icon}
+                </svg>
+                <span className="text-[11px] font-medium">{tab.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         {currentPage === 'chat' && activeThread && (
