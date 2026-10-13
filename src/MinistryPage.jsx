@@ -66,6 +66,18 @@ function MinistryPage({ currentUserId, serverId, canManage, onChanged }) {
   }
 
   if (selected) {
+    const sel = mine.find((r) => r.ministry_id === selected)
+    return (
+      <MinistryView
+        ministry={sel?.ministries}
+        isLeader={!!sel?.is_leader}
+        currentUserId={currentUserId}
+        serverId={serverId}
+        onBack={() => setSelected(null)}
+      />
+    )
+  }
+  if (false) {
     const m = mine.find((r) => r.ministry_id === selected)
     return (
       <div className="h-full overflow-y-auto p-4">
