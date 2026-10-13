@@ -1040,6 +1040,8 @@ function App() {
               currentUserId={session.user.id}
               currentUserEmail={session.user.email}
               otherProfile={conversationOtherProfile}
+              onGroupChanged={(patch) => setSelectedConversation((c) => (c ? { ...c, ...patch } : c))}
+              onLeftGroup={() => setSelectedConversation(null)}
               myProfile={profile}
             />
           )}

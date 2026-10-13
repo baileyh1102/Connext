@@ -7,6 +7,7 @@ import ReactionPicker from './ReactionPicker'
 import ReactorList from './ReactorList'
 import GifPicker from './GifPicker'
 import MessageMenu from './MessageMenu'
+import GroupInfoPanel from './GroupInfoPanel'
 import PollCreator from './PollCreator'
 import DMPollMessage from './DMPollMessage'
 import ChecklistCreator from './ChecklistCreator'
@@ -53,7 +54,7 @@ function Attachment({ url, type, name, onExpand }) {
   return null
 }
 
-function DMChatView({ conversation, currentUserId, currentUserEmail, otherProfile, myProfile }) {
+function DMChatView({ conversation, currentUserId, currentUserEmail, otherProfile, myProfile, onGroupChanged, onLeftGroup }) {
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState('')
   const [editingMessage, setEditingMessage] = useState(null)
@@ -82,7 +83,29 @@ function DMChatView({ conversation, currentUserId, currentUserEmail, otherProfil
   } else if (otherProfile) {
     profilesById[conversation.user_a === currentUserId ? conversation.user_b : conversation.user_a] = otherProfile
   }
+  const [extraProfiles, setExtraProfiles] = useState({})
+  const [showGroupInfo, setShowGroupInfo] = useState(false)
+  Object.entries(extraProfiles).forEach(([id, p]) => { if (!profilesById[id]) profilesById[id] = p })
   const nameFor = (id) => (id === currentUserId ? 'You' : (profilesById[id]?.display_name || (isGroup ? 'Member' : 'Someone')))
+
+  // Load profiles for anyone who sent a message but isn't in the current member list
+  useEffect(() => {
+    if (!conversation?.is_group) return
+    const missing = [...new Set(messages.map((m) => m.sender_id))].filter(
+      (id) => id && id !== currentUserId && !profilesById[id]
+    )
+    if (missing.length === 0) return
+    const load = async () => {
+      const { data } = await supabase.from('profiles').select('*').in('user_id', missing)
+      if (!data || data.length === 0) return
+      setExtraProfiles((current) => {
+        const next = { ...current }
+        data.forEach((p) => { next[p.user_id] = p })
+        return next
+      })
+    }
+    load()
+  }, [messages, conversation?.id])
 
   useEffect(() => {
     if (!conversation) return
@@ -377,6 +400,17 @@ function DMChatView({ conversation, currentUserId, currentUserEmail, otherProfil
 
   return (
     <div className="flex flex-col flex-1 min-h-0 bg-gray-100">
+      {isGroup && (
+        <button
+          onClick={() => setShowGroupInfo(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-white border-b text-sm text-gray-600 hover:bg-gray-50 text-left"
+        >
+          <span className="font-semibold text-gray-800 truncate">{conversation.displayName || 'Group chat'}</span>
+          <span className="text-gray-300">•</span>
+          <span className="whitespace-nowrap">{(conversation.memberProfiles?.length || 0) + 1} members</span>
+          <span className="ml-auto text-blue-600">Details</span>
+        </button>
+      )}
       <div
         className="flex-1 overflow-y-auto overflow-x-hidden touch-pan-y p-4 space-y-3"
         style={{
@@ -531,6 +565,16 @@ function DMChatView({ conversation, currentUserId, currentUserEmail, otherProfil
         })}
         <div ref={bottomRef} />
       </div>
+
+      {showGroupInfo && (
+        <GroupInfoPanel
+          conversation={conversation}
+          currentUserId={currentUserId}
+          onClose={() => setShowGroupInfo(false)}
+          onChanged={(patch) => onGroupChanged && onGroupChanged(patch)}
+          onLeft={() => { setShowGroupInfo(false); onLeftGroup && onLeftGroup() }}
+        />
+      )}
 
       {menu && (
         <MessageMenu
