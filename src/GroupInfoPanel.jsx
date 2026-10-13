@@ -112,6 +112,21 @@ function GroupInfoPanel({ conversation, currentUserId, onClose, onChanged, onLef
     setAdding(false)
   }
 
+  const handleDeleteGroup = async () => {
+    if (!window.confirm('Delete this group for everyone? All messages will be permanently removed for every member. This cannot be undone.')) return
+    const { data, error } = await supabase
+      .from('dm_conversations')
+      .delete()
+      .eq('id', conversation.id)
+      .select()
+    if (error || !data || data.length === 0) {
+      console.log('Delete group error:', error)
+      setMessage("Couldn't delete the group.")
+      return
+    }
+    onLeft()
+  }
+
   const handleLeave = async () => {
     if (!window.confirm('Leave this group? The others will keep chatting without you.')) return
     const { error } = await supabase.rpc('leave_group', { conv_id: conversation.id })
@@ -229,6 +244,9 @@ function GroupInfoPanel({ conversation, currentUserId, onClose, onChanged, onLef
         {message && <p className="px-4 pt-3 text-sm text-gray-600">{message}</p>}
 
         <div className="p-4">
+          <button onClick={handleDeleteGroup} className="w-full bg-red-600 hover:bg-red-700 text-white text-sm py-2 rounded mb-2">
+            Delete group for everyone
+          </button>
           <button onClick={handleLeave} className="w-full text-red-600 border border-red-200 hover:bg-red-50 text-sm py-2 rounded">
             Leave group
           </button>
