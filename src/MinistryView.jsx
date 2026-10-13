@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from './supabaseClient'
+import RosterBuilder from './RosterBuilder'
 
 const fmtDate = (d) =>
   new Date(d + 'T00:00:00').toLocaleDateString(undefined, {
@@ -257,6 +258,17 @@ function MinistryView({ ministry, isLeader, currentUserId, serverId, onBack }) {
           </span>
         </button>
         {open && (
+          <RosterBuilder
+            page={p}
+            slots={slots}
+            members={activeMembers}
+            nameOf={nameOf}
+            isLeader={isLeader}
+            onChanged={loadPages}
+            onDeletePage={() => deletePage(p.id)}
+          />
+        )}
+        {false && (
           <div className="px-3 pb-3 space-y-1">
             {slots.length === 0 && <p className="text-sm text-gray-400">No positions yet. Add some on the Positions tab.</p>}
             {slots.map((s) => (
