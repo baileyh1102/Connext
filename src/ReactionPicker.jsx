@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 
-const COMMON_EMOJI = ['💪', '👑', '❤️', '😂', '🙏', '🎉', '😮', '😢', '🤔']
+const COMMON_EMOJI = ['💪', '👑', '❤️', '😂', '🙏', '🎉', '😮', '😢', '🤔', '🔥', '🏀', '🏈', '🥎', '👻', '🎃', ]
 
 // A small button that opens a popover of common emoji to react with
 function ReactionPicker({ onSelect }) {

@@ -6,6 +6,7 @@ import ImageLightbox from './ImageLightbox'
 import ReactionPicker from './ReactionPicker'
 import ReactorList from './ReactorList'
 import GifPicker from './GifPicker'
+import MessageMenu from './MessageMenu'
 import PollCreator from './PollCreator'
 import DMPollMessage from './DMPollMessage'
 import ChecklistCreator from './ChecklistCreator'
@@ -149,6 +150,54 @@ function DMChatView({ conversation, currentUserId, currentUserEmail, otherProfil
     if (ext === 'mp3' || ext === 'wav') return 'audio'
     if (ext === 'pdf') return 'pdf'
     return null
+  }
+
+  const [menu, setMenu] = useState(null) // { msg, x, y, openedAt }
+  const pressTimer = useRef(null)
+  const pressStart = useRef(null)
+  const reactionTimer = useRef(null)
+  const reactionLongPressed = useRef(false)
+
+  const openMenu = (msg, x, y) => setMenu({ msg, x, y, openedAt: Date.now() })
+
+  const cancelPress = () => {
+    clearTimeout(pressTimer.current)
+    pressStart.current = null
+  }
+  const startPress = (e, msg) => {
+    if (window.innerWidth >= 768) return
+    const t = e.touches[0]
+    const x = t.clientX
+    const y = t.clientY
+    pressStart.current = { x, y }
+    clearTimeout(pressTimer.current)
+    pressTimer.current = setTimeout(() => {
+      if (navigator.vibrate) navigator.vibrate(15)
+      openMenu(msg, x, y)
+    }, 450)
+  }
+  const movePress = (e) => {
+    if (!pressStart.current) return
+    const t = e.touches[0]
+    if (Math.abs(t.clientX - pressStart.current.x) > 10 || Math.abs(t.clientY - pressStart.current.y) > 10) cancelPress()
+  }
+
+  const startReactionPress = (e, emoji, userIds) => {
+    const t = e.touches[0]
+    const x = t.clientX
+    const y = t.clientY
+    reactionLongPressed.current = false
+    clearTimeout(reactionTimer.current)
+    reactionTimer.current = setTimeout(() => {
+      reactionLongPressed.current = true
+      if (navigator.vibrate) navigator.vibrate(15)
+      setOpenReactorList({ emoji, names: userIds.map((id) => nameFor(id)), anchorPosition: { x, y } })
+    }, 450)
+  }
+  const cancelReactionPress = () => clearTimeout(reactionTimer.current)
+  const endReactionPress = () => {
+    clearTimeout(reactionTimer.current)
+    setTimeout(() => { reactionLongPressed.current = false }, 400)
   }
 
   const touchConversation = async () => {
@@ -344,7 +393,20 @@ function DMChatView({ conversation, currentUserId, currentUserEmail, otherProfil
           const groupedReactions = getGroupedReactions(msg.id)
 
           return (
-            <div key={msg.id} className="flex items-start gap-3">
+            <div
+              key={msg.id}
+              className="flex items-start gap-3 max-md:select-none"
+              style={{ WebkitTouchCallout: 'none' }}
+              onTouchStart={(e) => startPress(e, msg)}
+              onTouchMove={movePress}
+              onTouchEnd={cancelPress}
+              onTouchCancel={cancelPress}
+              onContextMenu={(e) => {
+                if (e.defaultPrevented) return
+                e.preventDefault()
+                openMenu(msg, e.clientX, e.clientY)
+              }}
+            >
               {isOwn ? (
                 myProfile?.avatar_url ? (
                   <img src={myProfile.avatar_url} alt="Avatar" className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
@@ -435,7 +497,14 @@ function DMChatView({ conversation, currentUserId, currentUserEmail, otherProfil
                       {Object.entries(groupedReactions).map(([emoji, { count, reactedByMe, userIds }]) => (
                         <button
                           key={emoji}
-                          onClick={() => handleToggleReaction(msg.id, emoji)}
+                          onClick={() => {
+                            if (reactionLongPressed.current) { reactionLongPressed.current = false; return }
+                            handleToggleReaction(msg.id, emoji)
+                          }}
+                          onTouchStart={(e) => { e.stopPropagation(); startReactionPress(e, emoji, userIds) }}
+                          onTouchMove={cancelReactionPress}
+                          onTouchEnd={endReactionPress}
+                          onTouchCancel={endReactionPress}
                           onContextMenu={(e) => {
                             e.preventDefault()
                             setOpenReactorList({
@@ -462,6 +531,20 @@ function DMChatView({ conversation, currentUserId, currentUserEmail, otherProfil
         })}
         <div ref={bottomRef} />
       </div>
+
+      {menu && (
+        <MessageMenu
+          x={menu.x}
+          y={menu.y}
+          openedAt={menu.openedAt}
+          preview={menu.msg.content}
+          onClose={() => setMenu(null)}
+          onReact={(emoji) => handleToggleReaction(menu.msg.id, emoji)}
+          onCopy={menu.msg.content ? () => handleCopy(menu.msg.id, menu.msg.content) : undefined}
+          onEdit={menu.msg.sender_id === currentUserId && menu.msg.content ? () => startEditing(menu.msg) : undefined}
+          onDelete={menu.msg.sender_id === currentUserId ? () => handleDelete(menu.msg.id) : undefined}
+        />
+      )}
 
       {expandedAttachment && (
         <ImageLightbox

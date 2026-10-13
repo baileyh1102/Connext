@@ -5,6 +5,7 @@ import UserProfileCard from './UserProfileCard'
 import { linkify } from './linkify'
 import ImageLightbox from './ImageLightbox'
 import GifPicker from './GifPicker'
+import MessageMenu from './MessageMenu'
 import PollCreator from './PollCreator'
 import PollMessage from './PollMessage'
 import ChecklistCreator from './ChecklistCreator'
@@ -63,6 +64,7 @@ function Attachment({ url, type, name, onExpand }) {
 // of turning the message bubble itself into a textarea in place.
 function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSendMessage, handleSendAttachment, handleCreatePoll, handleCreateChecklist, handleEditMessage, handleDeleteMessage, formatTime, formatDateLabel, isNewDay, currentUserId, currentUserEmail, selectedChannelId, replyCounts, onOpenThread, reactionsMap, onToggleReaction, canManageMessages, serverMembers = [] }) {
   const [actionMsg, setActionMsg] = useState(null)
+  const [actionPos, setActionPos] = useState({ x: 0, y: 0 })
   const [reactionViewer, setReactionViewer] = useState(null) // { emoji, userIds } for the "who reacted" sheet
   const reactionTimer = useRef(null)
   const reactionLongPressed = useRef(false)
@@ -199,6 +201,12 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
     clearTimeout(reactionTimer.current)
     // clear the flag shortly after, so a normal tap later still toggles the reaction
     setTimeout(() => { reactionLongPressed.current = false }, 400)
+  }
+
+  const openMenu = (msg, x, y) => {
+    sheetOpenedAt.current = Date.now()
+    setActionPos({ x, y })
+    setActionMsg(msg)
   }
 
   const cancelPress = () => {
@@ -360,7 +368,11 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
                 onTouchMove={movePress}
                 onTouchEnd={cancelPress}
                 onTouchCancel={cancelPress}
-                onContextMenu={(e) => { if (window.innerWidth < 768) e.preventDefault() }}
+                onContextMenu={(e) => {
+                  if (e.defaultPrevented) return // a reaction chip already handled this right-click
+                  e.preventDefault()
+                  openMenu(msg, e.clientX, e.clientY)
+                }}
               >
                 <button onClick={() => setViewingProfile({ profile: senderProfile, email: msg.user_email })} className="flex-shrink-0">
                   {senderProfile?.avatar_url ? (
@@ -592,64 +604,24 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
           </div>
         )}
 
-        {/* ---- PHONE: long-press message actions ---- */}
+        {/* ---- Message menu (right-click on computer, long-press on phone) ---- */}
         {actionMsg && (
-          <div className="fixed inset-0 z-50 md:hidden" onClick={() => setActionMsg(null)}>
-            <div className="absolute inset-0 bg-black/40" />
-            <div
-              className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl p-2 pb-[max(env(safe-area-inset-bottom),12px)] shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="mx-auto w-10 h-1 bg-gray-300 rounded-full my-2" />
-              <div className="flex justify-around px-2 pb-2 mb-1 border-b border-gray-100">
-                {['💪', '👑', '❤️', '😂', '🙏', '🎉', '😮', '😢', '🤔'].map((emoji) => (
-                  <button
-                    key={emoji}
-                    className="text-2xl w-11 h-11 rounded-full hover:bg-gray-100 active:bg-gray-200"
-                    onClick={() => { onToggleReaction(actionMsg.id, emoji); setActionMsg(null) }}
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-              {actionMsg.content && (
-                <p className="px-4 pb-2 text-sm text-gray-500 line-clamp-2">{actionMsg.content}</p>
-              )}
-              <button
-                className="w-full text-left px-4 py-3 text-base hover:bg-gray-100 rounded-lg"
-                onClick={() => { onOpenThread(actionMsg); setActionMsg(null) }}
-              >
-                Reply
-              </button>
-              {actionMsg.content && (
-                <button
-                  className="w-full text-left px-4 py-3 text-base hover:bg-gray-100 rounded-lg"
-                  onClick={() => { handleCopy(actionMsg.id, actionMsg.content); setActionMsg(null) }}
-                >
-                  Copy text
-                </button>
-              )}
-              {actionMsg.user_id === currentUserId && actionMsg.content && (
-                <button
-                  className="w-full text-left px-4 py-3 text-base hover:bg-gray-100 rounded-lg"
-                  onClick={() => { startEditing(actionMsg); setActionMsg(null) }}
-                >
-                  Edit
-                </button>
-              )}
-              {(actionMsg.user_id === currentUserId || canManageMessages) && (
-                <button
-                  className="w-full text-left px-4 py-3 text-base text-red-600 hover:bg-red-50 rounded-lg"
-                  onClick={() => {
-                    if (window.confirm('Delete this message?')) handleDeleteMessage(actionMsg.id)
-                    setActionMsg(null)
-                  }}
-                >
-                  Delete
-                </button>
-              )}
-            </div>
-          </div>
+          <MessageMenu
+            x={actionPos.x}
+            y={actionPos.y}
+            openedAt={sheetOpenedAt.current}
+            preview={actionMsg.content}
+            onClose={() => setActionMsg(null)}
+            onReact={(emoji) => onToggleReaction(actionMsg.id, emoji)}
+            onReply={() => onOpenThread(actionMsg)}
+            onCopy={actionMsg.content ? () => handleCopy(actionMsg.id, actionMsg.content) : undefined}
+            onEdit={actionMsg.user_id === currentUserId && actionMsg.content ? () => startEditing(actionMsg) : undefined}
+            onDelete={
+              actionMsg.user_id === currentUserId || canManageMessages
+                ? () => { if (window.confirm('Delete this message?')) handleDeleteMessage(actionMsg.id) }
+                : undefined
+            }
+          />
         )}
 
         {/* ---- EDITING INDICATOR ---- */}
