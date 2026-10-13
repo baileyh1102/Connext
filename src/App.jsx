@@ -39,8 +39,8 @@ function App() {
   const [selectedServer, setSelectedServer] = useState(null)
   const [selectedChannel, setSelectedChannel] = useState(null)
   const [currentPage, setCurrentPage] = useState('chat') // 'chat' | 'home' | 'calendar' | 'ministry' | 'dm'
-  const ministry = useMinistryAccess(session.user.id, selectedServer?.id)
-  const isServerCreator = !!selectedServer && selectedServer.created_by === session.user.id
+  const ministry = useMinistryAccess(session?.user?.id, selectedServer?.id)
+  const isServerCreator = !!selectedServer && selectedServer.created_by === session?.user?.id
   const showMinistry = ministry.showMinistry || isServerCreator
   const ministryCanManage = ministry.canManage || isServerCreator
   const [selectedConversation, setSelectedConversation] = useState(null)
