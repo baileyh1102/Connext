@@ -1067,7 +1067,7 @@ function App() {
 
           {/* ---- PHONE BOTTOM BAR: Home / Chat / Calendar ---- */}
           <div
-            className="md:hidden flex-shrink-0 bg-white border-t flex items-stretch"
+            className="md:hidden flex-shrink-0 bg-[#e0effd] border-t border-[#cde0f5] flex items-stretch"
             style={{ paddingBottom: 'max(env(safe-area-inset-bottom) - 14px, 0px)' }}
           >
             {[
