@@ -35,24 +35,24 @@ function useSlotsRealtime(key, load) {
   }, [key, load])
 }
 
-export function MySchedule({ currentUserId, serverId }) {
+export function MySchedule({ currentUserId, serverId, ministryId }) {
   const [items, setItems] = useState([])
   const [error, setError] = useState('')
 
   const load = useCallback(async () => {
     const { data } = await supabase
       .from('ministry_slots')
-      .select('id, name, start_time, end_time, status, ministry_pages!inner(service_date, title, ministries!inner(name, server_id))')
+      .select('id, name, start_time, end_time, status, ministry_pages!inner(service_date, title, ministry_id, ministries!inner(name, server_id))')
       .eq('user_id', currentUserId)
       .eq('ministry_pages.ministries.server_id', serverId)
       .gte('ministry_pages.service_date', todayStr())
-    const rows = (data || []).sort(
+    const rows = (data || []).filter((r) => !ministryId || r.ministry_pages.ministry_id === ministryId).sort(
       (a, b) =>
         a.ministry_pages.service_date.localeCompare(b.ministry_pages.service_date) ||
         (a.start_time || '').localeCompare(b.start_time || '')
     )
     setItems(rows)
-  }, [currentUserId, serverId])
+  }, [currentUserId, serverId, ministryId])
 
   useEffect(() => { load() }, [load])
   useSlotsRealtime(`mine-${currentUserId}-${serverId}`, load)

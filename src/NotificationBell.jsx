@@ -5,9 +5,12 @@ import { supabase } from './supabaseClient'
 // opens a dropdown listing notifications (newest first), and marks them read
 // as they're viewed. Other features (birthday alerts, prayer-sending, etc.)
 // simply insert rows into the `notifications` table and they'll show up here.
+// Ministry scheduling notifications (type 'ministry_assignment') carry a slot_id
+// and show Confirm / Can't make it buttons.
 function NotificationBell({ currentUserId }) {
   const [notifications, setNotifications] = useState([])
   const [senderProfiles, setSenderProfiles] = useState({}) // { user_id: { display_name, avatar_url } }
+  const [slotInfo, setSlotInfo] = useState({}) // { slot_id: { user_id, status } }
   const [showDropdown, setShowDropdown] = useState(false)
   const [selectedNotification, setSelectedNotification] = useState(null) // the one currently shown in the detail popup
   const dropdownRef = useRef(null)
@@ -34,6 +37,17 @@ function NotificationBell({ currentUserId }) {
       profileRows?.forEach((p) => { map[p.user_id] = p })
       setSenderProfiles(map)
     }
+
+    const slotIds = [...new Set((data || []).map((n) => n.slot_id).filter(Boolean))]
+    if (slotIds.length > 0) {
+      const { data: slotRows } = await supabase
+        .from('ministry_slots')
+        .select('id, user_id, status')
+        .in('id', slotIds)
+      const map = {}
+      slotRows?.forEach((s) => { map[s.id] = { user_id: s.user_id, status: s.status } })
+      setSlotInfo(map)
+    }
   }
 
   useEffect(() => {
@@ -42,6 +56,9 @@ function NotificationBell({ currentUserId }) {
     const channel = supabase
       .channel(`notifications-${currentUserId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${currentUserId}` }, () => {
+        fetchNotifications()
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'ministry_slots' }, () => {
         fetchNotifications()
       })
       .subscribe()
@@ -76,7 +93,38 @@ function NotificationBell({ currentUserId }) {
     setNotifications((current) => current.filter((n) => n.id !== id))
   }
 
-  // Short preview text shown in the dropdown list — the full message only
+  const respondToSlot = async (n, status) => {
+    const { error } = await supabase.rpc('respond_to_slot', { slot_id: n.slot_id, new_status: status })
+    if (error) return
+    setSlotInfo((cur) => ({ ...cur, [n.slot_id]: { ...cur[n.slot_id], status } }))
+  }
+
+  // Confirm / Can't make it buttons for a scheduling notification
+  const renderSlotActions = (n) => {
+    if (n.type !== 'ministry_assignment' || !n.slot_id) return null
+    const info = slotInfo[n.slot_id]
+    if (!info || info.user_id !== currentUserId) {
+      return <p className="text-xs text-gray-400 mt-1">This spot has been reassigned.</p>
+    }
+    return (
+      <div className="flex items-center gap-2 mt-2">
+        {info.status !== 'confirmed' && (
+          <button onClick={() => respondToSlot(n, 'confirmed')} className="px-2.5 py-1 rounded-md bg-gray-800 text-white text-xs">
+            Confirm
+          </button>
+        )}
+        {info.status !== 'declined' && (
+          <button onClick={() => respondToSlot(n, 'declined')} className="px-2.5 py-1 rounded-md border border-gray-300 text-xs">
+            Can't make it
+          </button>
+        )}
+        {info.status === 'confirmed' && <span className="text-xs text-green-700">Confirmed</span>}
+        {info.status === 'declined' && <span className="text-xs text-red-600">You declined</span>}
+      </div>
+    )
+  }
+
+  // Short preview text shown in the dropdown list. The full message only
   // shows once you click into the detail popup
   const getPreviewText = (n) => {
     const senderName = senderProfiles[n.sender_id]?.display_name || 'Someone'
@@ -119,17 +167,20 @@ function NotificationBell({ currentUserId }) {
             <p className="text-sm text-gray-400 text-center p-6">No notifications yet.</p>
           ) : (
             notifications.map((n) => (
-              <div key={n.id} className={`flex justify-between items-start gap-2 p-3 border-b last:border-b-0 hover:bg-gray-50 cursor-pointer ${n.read ? '' : 'bg-blue-50'}`}>
-                <button onClick={() => setSelectedNotification(n)} className="text-left flex-1 min-w-0">
-                  <p className="text-sm text-gray-800 break-words">{getPreviewText(n)}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{formatTime(n.created_at)}</p>
-                </button>
+              <div key={n.id} className={`flex justify-between items-start gap-2 p-3 border-b last:border-b-0 hover:bg-gray-50 ${n.read ? '' : 'bg-blue-50'}`}>
+                <div className="flex-1 min-w-0">
+                  <button onClick={() => setSelectedNotification(n)} className="text-left w-full">
+                    <p className="text-sm text-gray-800 break-words">{getPreviewText(n)}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{formatTime(n.created_at)}</p>
+                  </button>
+                  {renderSlotActions(n)}
+                </div>
                 <button
                   onClick={() => handleDelete(n.id)}
                   className="text-gray-300 hover:text-red-500 flex-shrink-0"
                   title="Dismiss"
                 >
-                  ✕
+                  {'\u2715'}
                 </button>
               </div>
             ))
@@ -154,9 +205,10 @@ function NotificationBell({ currentUserId }) {
                   {senderProfiles[selectedNotification.sender_id]?.display_name || 'Notification'}
                 </span>
               </div>
-              <button onClick={() => setSelectedNotification(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+              <button onClick={() => setSelectedNotification(null)} className="text-gray-400 hover:text-gray-600">{'\u2715'}</button>
             </div>
             <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">{selectedNotification.content}</p>
+            {renderSlotActions(selectedNotification)}
             <p className="text-xs text-gray-400 mt-3">{formatTime(selectedNotification.created_at)}</p>
           </div>
         </div>

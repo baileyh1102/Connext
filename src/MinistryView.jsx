@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from './supabaseClient'
 import RosterBuilder from './RosterBuilder'
+import { MySchedule } from './MinistrySchedule'
 
 const fmtDate = (d) =>
   new Date(d + 'T00:00:00').toLocaleDateString(undefined, {
@@ -309,6 +310,8 @@ function MinistryView({ ministry, isLeader, currentUserId, serverId, onBack }) {
       </div>
 
       {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+
+      <MySchedule currentUserId={currentUserId} serverId={serverId} ministryId={ministry.id} />
 
       {tab === 'members' && (
         <div>
