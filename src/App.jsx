@@ -8,6 +8,8 @@ import ServerSettings from './ServerSettings'
 import ChatView from './ChatView'
 import ThreadPanel from './ThreadPanel'
 import PageNav from './PageNav'
+import MinistryPage from './MinistryPage'
+import useMinistryAccess from './useMinistryAccess'
 import connextLogo from './assets/connext_logo_with_mascot.png'
 import HomePage from './HomePage'
 import CalendarPage from './CalendarPage'
@@ -36,7 +38,11 @@ function App() {
   const [servers, setServers] = useState([]) // servers the logged-in user belongs to
   const [selectedServer, setSelectedServer] = useState(null)
   const [selectedChannel, setSelectedChannel] = useState(null)
-  const [currentPage, setCurrentPage] = useState('chat') // 'chat' | 'home' | 'calendar' | 'dm'
+  const [currentPage, setCurrentPage] = useState('chat') // 'chat' | 'home' | 'calendar' | 'ministry' | 'dm'
+  const ministry = useMinistryAccess(session.user.id, selectedServer?.id)
+  const isServerCreator = !!selectedServer && selectedServer.created_by === session.user.id
+  const showMinistry = ministry.showMinistry || isServerCreator
+  const ministryCanManage = ministry.canManage || isServerCreator
   const [selectedConversation, setSelectedConversation] = useState(null)
   const [conversationOtherProfile, setConversationOtherProfile] = useState(null)
 
@@ -949,7 +955,7 @@ function App() {
             <div className="flex items-center gap-2 md:gap-4">
              
               <div className="hidden md:block">
-                <PageNav currentPage={currentPage} setCurrentPage={setCurrentPage} />
+                <PageNav currentPage={currentPage} setCurrentPage={setCurrentPage} showMinistry={showMinistry} />
               </div>
               {currentPage === 'dm' && (
                 <span className="md:hidden font-heading font-semibold text-gray-900 truncate max-w-[9rem]">
@@ -1030,6 +1036,14 @@ function App() {
               canDeletePosts={canDeletePosts}
             />
           )}
+          {currentPage === 'ministry' && selectedServer && (
+            <MinistryPage
+              currentUserId={session.user.id}
+              serverId={selectedServer.id}
+              canManage={ministryCanManage}
+              onChanged={ministry.refresh}
+            />
+          )}
           {currentPage === 'calendar' && (
             <CalendarPage selectedServer={selectedServer} isAdmin={canManageCalendar} />
           )}
@@ -1082,6 +1096,21 @@ function App() {
                   </>
                 ),
               },
+            ...(showMinistry
+                ? [
+                    {
+                      id: 'ministry',
+                      label: 'Ministry',
+                      icon: (
+                        <>
+                          <circle cx="9" cy="8" r="3" />
+                          <path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" />
+                          <path d="M17 11a3 3 0 1 0 0-6M21 20c0-2.5-1.5-4.5-4-5" />
+                        </>
+                      ),
+                    },
+                  ]
+                : []),
             ].map((tab) => (
               <button
                 key={tab.id}
