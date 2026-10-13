@@ -79,6 +79,7 @@ function MinistryPage({ currentUserId, serverId, canManage, onChanged }) {
       />
     )
   }
+  
   if (false) {
     const m = mine.find((r) => r.ministry_id === selected)
     return (
@@ -88,7 +89,7 @@ function MinistryPage({ currentUserId, serverId, canManage, onChanged }) {
         </button>
         <h2 className="text-xl font-semibold">{m?.ministries.name}</h2>
         <p className="text-sm text-gray-500 mt-1">
-          Members, positions and dated pages are coming in the next steps.
+          Members, positions and dated events are coming in the next steps.
         </p>
       </div>
     )

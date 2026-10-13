@@ -79,7 +79,7 @@ function RosterBuilder({ page, slots, members, nameOf, isLeader, onChanged, onDe
   }
 
   const removeSpot = async (slot) => {
-    if (!window.confirm(`Remove "${slot.name}" from this page?`)) return
+    if (!window.confirm(`Remove "${slot.name}" from this event?`)) return
     await supabase.from('ministry_slots').delete().eq('id', slot.id)
     onChanged()
   }
@@ -210,12 +210,12 @@ function RosterBuilder({ page, slots, members, nameOf, isLeader, onChanged, onDe
                 </div>
               </form>
             ) : (
-              <button onClick={() => setAdding(true)} className="text-sm text-blue-600">+ Add a spot to this page only</button>
+              <button onClick={() => setAdding(true)} className="text-sm text-blue-600">+ Add a spot to this event only</button>
             )
           )}
 
           {isLeader && (
-            <button onClick={onDeletePage} className="block text-sm text-red-600 pt-2">Delete this page</button>
+            <button onClick={onDeletePage} className="block text-sm text-red-600 pt-2">Delete this event</button>
           )}
         </div>
       </div>
@@ -250,7 +250,7 @@ function RosterBuilder({ page, slots, members, nameOf, isLeader, onChanged, onDe
                         {m.last ? `Last served ${fmtShortDate(m.last)}` : 'Never served'}
                       </span>
                     </span>
-                    {onThisPage.has(m.user_id) && <span className="text-xs text-blue-600 shrink-0">on this page</span>}
+                    {onThisPage.has(m.user_id) && <span className="text-xs text-blue-600 shrink-0">on this event</span>}
                   </button>
                 ))}
                 {members.length === 0 && <p className="p-3 text-sm text-gray-400">No members yet. Invite people on the Members tab.</p>}

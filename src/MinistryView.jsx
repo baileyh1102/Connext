@@ -220,7 +220,7 @@ function MinistryView({ ministry, isLeader, currentUserId, serverId, onBack }) {
       .from('ministry_pages')
       .insert({ ministry_id: ministry.id, service_date: newDate, title: newTitle.trim() || null, created_by: currentUserId })
       .select().single()
-    if (err || !page) return setError(err?.message || 'Could not create page.')
+    if (err || !page) return setError(err?.message || 'Could not create event.')
     if (positions.length) {
       const { error: slotErr } = await supabase.from('ministry_slots').insert(
         positions.map((p) => ({
@@ -235,7 +235,7 @@ function MinistryView({ ministry, isLeader, currentUserId, serverId, onBack }) {
   }
 
   const deletePage = async (id) => {
-    if (!window.confirm('Delete this page and its roster?')) return
+    if (!window.confirm('Delete this event and its roster?')) return
     await supabase.from('ministry_pages').delete().eq('id', id)
     loadPages()
   }
@@ -282,7 +282,7 @@ function MinistryView({ ministry, isLeader, currentUserId, serverId, onBack }) {
             ))}
             <p className="text-xs text-gray-400 pt-1">Assigning people comes in the next step.</p>
             {isLeader && (
-              <button onClick={() => deletePage(p.id)} className="text-sm text-red-600 pt-1">Delete page</button>
+              <button onClick={() => deletePage(p.id)} className="text-sm text-red-600 pt-1">Delete event</button>
             )}
           </div>
         )}
@@ -296,7 +296,7 @@ function MinistryView({ ministry, isLeader, currentUserId, serverId, onBack }) {
       <h2 className="text-xl font-semibold mb-3">{ministry.name}</h2>
 
       <div className="flex gap-1 mb-4">
-        {['members', 'positions', 'pages'].map((t) => (
+        {['members', 'positions', 'events'].map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -385,7 +385,7 @@ function MinistryView({ ministry, isLeader, currentUserId, serverId, onBack }) {
       {tab === 'positions' && (
         <div className="space-y-2">
           <p className="text-xs text-gray-500">
-            These are copied onto every new dated page. Changing them here doesn't change pages already made.
+            These are copied onto every new dated event. Changing them here doesn't change events already made.
           </p>
           {positions.map((p) => (
             <PositionRow key={p.id} pos={p} isLeader={isLeader} onSave={savePosition} onDelete={deletePosition} />
@@ -412,7 +412,7 @@ function MinistryView({ ministry, isLeader, currentUserId, serverId, onBack }) {
         </div>
       )}
 
-      {tab === 'pages' && (
+      {tab === 'events' && (
         <div className="space-y-4">
           {isLeader && (
             <form onSubmit={createPage} className="border border-dashed border-gray-300 rounded-lg p-3 space-y-2">
@@ -422,13 +422,13 @@ function MinistryView({ ministry, isLeader, currentUserId, serverId, onBack }) {
                 placeholder="Label (optional, e.g. 9am Service)"
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-base" />
               <button type="submit" className="px-3 py-1.5 rounded-md bg-gray-800 text-white text-sm">
-                New page{positions.length ? ` (with ${positions.length} positions)` : ''}
+                New event{positions.length ? ` (with ${positions.length} positions)` : ''}
               </button>
             </form>
           )}
           <div className="space-y-2">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Upcoming</h3>
-            {upcoming.length === 0 && <p className="text-sm text-gray-400">No upcoming pages.</p>}
+            {upcoming.length === 0 && <p className="text-sm text-gray-400">No upcoming events.</p>}
             {upcoming.map(renderPage)}
           </div>
           {past.length > 0 && (
