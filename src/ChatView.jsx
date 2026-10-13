@@ -62,7 +62,10 @@ function Attachment({ url, type, name, onExpand }) {
 // Editing a message populates this same input bar (Discord-style) instead
 // of turning the message bubble itself into a textarea in place.
 function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSendMessage, handleSendAttachment, handleCreatePoll, handleCreateChecklist, handleEditMessage, handleDeleteMessage, formatTime, formatDateLabel, isNewDay, currentUserId, currentUserEmail, selectedChannelId, replyCounts, onOpenThread, reactionsMap, onToggleReaction, canManageMessages, serverMembers = [] }) {
-  const [actionMsg, setActionMsg] = useState(null) // message whose long-press menu is open
+  const [actionMsg, setActionMsg] = useState(null)
+  const [reactionViewer, setReactionViewer] = useState(null) // { emoji, userIds } for the "who reacted" sheet
+  const reactionTimer = useRef(null)
+  const reactionLongPressed = useRef(false) // message whose long-press menu is open
   const pressTimer = useRef(null)
   const pressStart = useRef(null)
   const [editingMessage, setEditingMessage] = useState(null) // the message object currently being edited, or null
@@ -179,6 +182,22 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
     setNewMessage('')
   }
 
+
+  const cancelReactionPress = () => clearTimeout(reactionTimer.current)
+  const startReactionPress = (userIds, emoji) => {
+    reactionLongPressed.current = false
+    clearTimeout(reactionTimer.current)
+    reactionTimer.current = setTimeout(() => {
+      reactionLongPressed.current = true
+      if (navigator.vibrate) navigator.vibrate(15)
+      setReactionViewer({ emoji, userIds })
+    }, 450)
+  }
+  const endReactionPress = () => {
+    clearTimeout(reactionTimer.current)
+    // clear the flag shortly after, so a normal tap later still toggles the reaction
+    setTimeout(() => { reactionLongPressed.current = false }, 400)
+  }
 
   const cancelPress = () => {
     clearTimeout(pressTimer.current)
@@ -461,7 +480,15 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
                         {Object.entries(groupedReactions).map(([emoji, { count, reactedByMe, userIds }]) => (
                           <button
                             key={emoji}
-                            onClick={() => onToggleReaction(msg.id, emoji)}
+                            onClick={() => {
+                              if (reactionLongPressed.current) { reactionLongPressed.current = false; return }
+                              onToggleReaction(msg.id, emoji)
+                            }}
+                            onTouchStart={(e) => { e.stopPropagation(); startReactionPress(userIds, emoji) }}
+                            onTouchMove={cancelReactionPress}
+                            onTouchEnd={endReactionPress}
+                            onTouchCancel={endReactionPress}
+                            onContextMenu={(e) => e.preventDefault()}
                             onContextMenu={(e) => {
                               e.preventDefault()
                               setOpenReactorList({
@@ -529,6 +556,40 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
 
       {/* ---- MESSAGE INPUT BAR ---- */}
       <div className="bg-white">
+        {/* ---- Who reacted ---- */}
+        {reactionViewer && (
+          <div className="fixed inset-0 z-50" onClick={() => setReactionViewer(null)}>
+            <div className="absolute inset-0 bg-black/40" />
+            <div
+              className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl p-4 pb-[max(env(safe-area-inset-bottom),16px)] shadow-2xl max-h-[60vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mx-auto w-10 h-1 bg-gray-300 rounded-full mb-3" />
+              <h3 className="text-base font-semibold mb-3">
+                <span className="text-2xl mr-2">{reactionViewer.emoji}</span>
+                {reactionViewer.userIds.length} {reactionViewer.userIds.length === 1 ? 'reaction' : 'reactions'}
+              </h3>
+              <ul className="space-y-2">
+                {reactionViewer.userIds.map((uid) => {
+                  const p = profilesMap[uid]
+                  return (
+                    <li key={uid} className="flex items-center gap-3">
+                      {p?.avatar_url ? (
+                        <img src={p.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover" />
+                      ) : (
+                        <div className="w-9 h-9 rounded-full bg-gray-300" />
+                      )}
+                      <span className="text-sm">
+                        {p?.display_name || 'Member'}{uid === currentUserId ? ' (you)' : ''}
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          </div>
+        )}
+
         {/* ---- PHONE: long-press message actions ---- */}
         {actionMsg && (
           <div className="fixed inset-0 z-50 md:hidden" onClick={() => setActionMsg(null)}>
