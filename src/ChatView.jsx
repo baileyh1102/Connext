@@ -667,7 +667,7 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
           </div>
         )}
 
-        <form onSubmit={handleFormSubmit} className="px-2 md:px-3 pb-3 md:pb-4 pt-1">
+        <form onSubmit={handleFormSubmit} className="pl-2 pr-2 md:pl-3 md:pr-6 pb-3 md:pb-4 pt-1">
         <div className="flex gap-2 items-end rounded-2xl bg-[#cde0f5] px-3 py-1.5">
           <input
             ref={fileInputRef}
