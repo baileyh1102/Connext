@@ -16,6 +16,31 @@ function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply
   const [openReactorList, setOpenReactorList] = useState(null)
   const [mentionQuery, setMentionQuery] = useState(null)
   const textareaRef = useRef(null)
+  const reactionTimer = useRef(null)
+  const reactionLongPressed = useRef(false)
+
+  const startReactionPress = (e, emoji, userIds) => {
+    const t = e.touches[0]
+    const x = t.clientX
+    const y = t.clientY
+    reactionLongPressed.current = false
+    clearTimeout(reactionTimer.current)
+    reactionTimer.current = setTimeout(() => {
+      reactionLongPressed.current = true
+      if (navigator.vibrate) navigator.vibrate(15)
+      setOpenReactorList({
+        emoji,
+        names: userIds.map((id) => (id === currentUserId ? 'You' : (profilesMap[id]?.display_name || 'Someone'))),
+        anchorPosition: { x, y },
+      })
+    }, 450)
+  }
+  const cancelReactionPress = () => clearTimeout(reactionTimer.current)
+  const endReactionPress = () => {
+    clearTimeout(reactionTimer.current)
+    // clear the flag shortly after so a later normal tap still toggles the reaction
+    setTimeout(() => { reactionLongPressed.current = false }, 400)
+  }
 
   const parentProfile = profilesMap[parentMessage.user_id]
 
@@ -245,7 +270,14 @@ function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply
                       {Object.entries(groupedReactions).map(([emoji, { count, reactedByMe, userIds }]) => (
                         <button
                           key={emoji}
-                          onClick={() => onToggleReaction(reply.id, emoji)}
+                          onClick={() => {
+                            if (reactionLongPressed.current) { reactionLongPressed.current = false; return }
+                            onToggleReaction(reply.id, emoji)
+                          }}
+                          onTouchStart={(e) => startReactionPress(e, emoji, userIds)}
+                          onTouchMove={cancelReactionPress}
+                          onTouchEnd={endReactionPress}
+                          onTouchCancel={endReactionPress}
                           onContextMenu={(e) => {
                             e.preventDefault()
                             setOpenReactorList({

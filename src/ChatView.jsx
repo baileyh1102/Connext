@@ -488,7 +488,6 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
                             onTouchMove={cancelReactionPress}
                             onTouchEnd={endReactionPress}
                             onTouchCancel={endReactionPress}
-                            onContextMenu={(e) => e.preventDefault()}
                             onContextMenu={(e) => {
                               e.preventDefault()
                               setOpenReactorList({
