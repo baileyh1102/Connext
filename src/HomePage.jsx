@@ -298,10 +298,10 @@ useEffect(() => {
       className="relative flex-1 h-full overflow-hidden bg-gray-100"
       style={{ backgroundImage: `url(${homeBg})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
     >
-      {bubblesRevealed && (
+      {(bubblesRevealed || window.innerWidth >= 768) && (
         <div
           className={`absolute inset-0 transition-opacity duration-500 ${
-            bubblesOnly ? 'opacity-100' : 'opacity-0 pointer-events-none'
+            bubblesOnly ? 'opacity-100' : 'opacity-0 pointer-events-none md:opacity-100 md:pointer-events-auto'
           }`}
         >
           <FloatingBubbles
