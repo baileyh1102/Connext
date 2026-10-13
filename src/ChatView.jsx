@@ -569,7 +569,7 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
       )}
 
       {/* ---- MESSAGE INPUT BAR ---- */}
-      <div className="bg-white">
+      <div className="bg-transparent">
         {/* ---- Who reacted ---- */}
         {reactionViewer && (
           <div className="fixed inset-0 z-50 md:hidden" onClick={() => { if (Date.now() - sheetOpenedAt.current < 500) return; setActionMsg(null) }}>
@@ -659,7 +659,8 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
           </div>
         )}
 
-        <form onSubmit={handleFormSubmit} className="p-4 max-md:pb-3 flex gap-2 items-end">
+        <form onSubmit={handleFormSubmit} className="px-2 md:px-3 pb-3 md:pb-4 pt-1">
+        <div className="flex gap-2 items-end rounded-2xl bg-[#cde0f5] px-3 py-1.5">
           <input
             ref={fileInputRef}
             type="file"
@@ -676,7 +677,7 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
           <button
             type="button"
             onClick={() => setShowActions(!showActions)}
-            className="mb-1 w-8 h-8 flex items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-colors flex-shrink-0"
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-[#b5cfec] text-gray-600 hover:bg-[#a6c4e6] hover:text-gray-800 transition-colors flex-shrink-0"
             title={showActions ? 'Close' : 'More options'}
           >
             <svg
@@ -805,12 +806,23 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
               onKeyDown={handleInputKeyDown}
               placeholder={pendingFile ? 'Add a caption...' : 'Type a message...'}
               rows={Math.min(newMessage.split('\n').length, 6)}
-              className="block w-full border rounded px-2 py-1.5 resize-none"
+              className="block w-full bg-transparent border-0 outline-none focus:outline-none focus:ring-0 rounded px-1 py-1 text-base resize-none placeholder-gray-500"
             />
           </div>
-          <button type="submit" className="bg-blue-600 text-white px-4 py-[7px] rounded hover:bg-blue-600/90">
-            {editingMessage ? 'Save' : 'Send'}
+          <button
+            type="submit"
+            aria-label="Send"
+            className={`md:hidden flex-shrink-0 w-8 h-8 rounded-full bg-blue-600 text-white items-center justify-center ${
+              newMessage.trim() || pendingFile ? 'flex' : 'hidden'
+            }`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="19" x2="12" y2="5" />
+              <polyline points="5 12 12 5 19 12" />
+            </svg>
+            className="flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-x-hidden bg-[#e0effd]"
           </button>
+        </div>
         </form>
       </div>
     </div>
