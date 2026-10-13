@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from './supabaseClient'
 import MinistryView from './MinistryView'
+import { MySchedule, MasterRoster } from './MinistrySchedule'
 
 function MinistryPage({ currentUserId, serverId, canManage, onChanged }) {
   const [rows, setRows] = useState([])
@@ -96,6 +97,13 @@ function MinistryPage({ currentUserId, serverId, canManage, onChanged }) {
   return (
     <div className="h-full overflow-y-auto p-4 max-w-2xl mx-auto w-full">
       <h2 className="text-xl font-semibold mb-4">Ministry</h2>
+
+      {mine.length > 0 && (
+        <>
+          <MySchedule currentUserId={currentUserId} serverId={serverId} />
+          <MasterRoster serverId={serverId} />
+        </>
+      )}
 
       {loading && <p className="text-sm text-gray-400">Loading…</p>}
 
