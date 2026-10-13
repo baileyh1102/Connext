@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { computeChannelViewers } from './computeChannelViewers'
 import StatusDot from './StatusDot'
+import { createPortal } from 'react-dom'
+import UserProfileCard from './UserProfileCard'
 import { usePresence, getEffectiveStatus } from './usePresence'
 
 // ChannelViewerCount shows "# channel-name  •  N here" in the header, and
@@ -9,6 +11,7 @@ import { usePresence, getEffectiveStatus } from './usePresence'
 function ChannelViewerCount({ channel, server }) {
   const [viewers, setViewers] = useState([])
   const [showList, setShowList] = useState(false)
+  const [viewingProfile, setViewingProfile] = useState(null) // person whose profile card is open
   const popupRef = useRef(null)
   const onlineUserIds = usePresence()
 
@@ -51,13 +54,27 @@ function ChannelViewerCount({ channel, server }) {
         <span>{viewers.length}</span>
       </button>
 
+      {viewingProfile && createPortal(
+        <UserProfileCard
+          profile={viewingProfile}
+          email={null}
+          onClose={() => setViewingProfile(null)}
+        />,
+        document.body
+      )}
+
       {showList && (
         <div className="absolute left-0 top-7 bg-white border rounded-lg shadow-lg w-56 max-h-72 overflow-y-auto z-30">
           <div className="px-3 py-2 border-b text-xs font-semibold text-gray-500">
             {viewers.length} member{viewers.length === 1 ? '' : 's'} can view this channel
           </div>
           {viewers.map((v) => (
-            <div key={v.user_id} className="flex items-center gap-2 px-3 py-2">
+            <div
+              key={v.user_id}
+              role="button"
+              onClick={() => { setViewingProfile(v); setShowList(false) }}
+              className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-50"
+            >
               <div className="relative flex-shrink-0">
                 {v.avatar_url ? (
                   <img src={v.avatar_url} alt="" className="w-6 h-6 rounded-full object-cover" />
