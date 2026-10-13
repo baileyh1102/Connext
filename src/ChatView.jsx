@@ -345,7 +345,7 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
       {/* ---- CHAT MESSAGE LIST ---- */}
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto overflow-x-hidden touch-pan-y p-4 space-y-3"
+        className="flex-1 overflow-y-auto overflow-x-hidden touch-pan-y px-4 pt-4 pb-14 space-y-3"
         style={{
           backgroundImage: `url(${chatBg})`,
           backgroundSize: 'cover',
@@ -577,7 +577,7 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
       )}
 
       {/* ---- MESSAGE INPUT BAR ---- */}
-      <div className="bg-transparent">
+      <div className="bg-transparent relative z-10 -mt-[26px]">
         {/* ---- Who reacted ---- */}
         {reactionViewer && (
           <div className="fixed inset-0 z-50 md:hidden" onClick={() => { if (Date.now() - sheetOpenedAt.current < 500) return; setActionMsg(null) }}>
