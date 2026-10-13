@@ -46,6 +46,7 @@ export function MySchedule({ currentUserId, serverId, ministryId }) {
       .eq('user_id', currentUserId)
       .eq('ministry_pages.ministries.server_id', serverId)
       .gte('ministry_pages.service_date', todayStr())
+      .eq('status', 'pending')
     const rows = (data || []).filter((r) => !ministryId || r.ministry_pages.ministry_id === ministryId).sort(
       (a, b) =>
         a.ministry_pages.service_date.localeCompare(b.ministry_pages.service_date) ||
@@ -68,7 +69,7 @@ export function MySchedule({ currentUserId, serverId, ministryId }) {
 
   return (
     <div className="mb-6">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">My schedule</h3>
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Needs your response</h3>
       {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
       <div className="space-y-2">
         {items.map((s) => {

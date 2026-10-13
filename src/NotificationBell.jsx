@@ -96,7 +96,8 @@ function NotificationBell({ currentUserId }) {
   const respondToSlot = async (n, status) => {
     const { error } = await supabase.rpc('respond_to_slot', { slot_id: n.slot_id, new_status: status })
     if (error) return
-    setSlotInfo((cur) => ({ ...cur, [n.slot_id]: { ...cur[n.slot_id], status } }))
+    await handleDelete(n.id)
+    setSelectedNotification(null)
   }
 
   // Confirm / Can't make it buttons for a scheduling notification
