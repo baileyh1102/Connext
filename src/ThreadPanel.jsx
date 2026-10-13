@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import ReactionPicker from './ReactionPicker'
 import ReactorList from './ReactorList'
+import MessageMenu from './MessageMenu'
 import { linkify } from './linkify'
 import MentionAutocomplete from './MentionAutocomplete'
 import { detectMentionQuery, insertMention, mentionify } from './mentions'
@@ -18,6 +19,32 @@ function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply
   const textareaRef = useRef(null)
   const reactionTimer = useRef(null)
   const reactionLongPressed = useRef(false)
+  const [menu, setMenu] = useState(null) // { reply, x, y, openedAt }
+  const pressTimer = useRef(null)
+  const pressStart = useRef(null)
+
+  const openMenu = (reply, x, y) => setMenu({ reply, x, y, openedAt: Date.now() })
+  const cancelPress = () => {
+    clearTimeout(pressTimer.current)
+    pressStart.current = null
+  }
+  const startPress = (e, reply) => {
+    if (window.innerWidth >= 768) return
+    const t = e.touches[0]
+    const x = t.clientX
+    const y = t.clientY
+    pressStart.current = { x, y }
+    clearTimeout(pressTimer.current)
+    pressTimer.current = setTimeout(() => {
+      if (navigator.vibrate) navigator.vibrate(15)
+      openMenu(reply, x, y)
+    }, 450)
+  }
+  const movePress = (e) => {
+    if (!pressStart.current) return
+    const t = e.touches[0]
+    if (Math.abs(t.clientX - pressStart.current.x) > 10 || Math.abs(t.clientY - pressStart.current.y) > 10) cancelPress()
+  }
 
   const startReactionPress = (e, emoji, userIds) => {
     const t = e.touches[0]
@@ -175,7 +202,20 @@ function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply
           const groupedReactions = getGroupedReactions(reply.id)
 
           return (
-            <div key={reply.id} className="flex items-start gap-3">
+            <div
+              key={reply.id}
+              className="flex items-start gap-3 max-md:select-none"
+              style={{ WebkitTouchCallout: 'none' }}
+              onTouchStart={(e) => startPress(e, reply)}
+              onTouchMove={movePress}
+              onTouchEnd={cancelPress}
+              onTouchCancel={cancelPress}
+              onContextMenu={(e) => {
+                if (e.nativeEvent.defaultPrevented) return // a reaction chip already handled this right-click
+                e.preventDefault()
+                openMenu(reply, e.clientX, e.clientY)
+              }}
+            >
               {replyProfile?.avatar_url ? (
                 <img src={replyProfile.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full object-cover shrink-0" />
               ) : (
@@ -202,7 +242,7 @@ function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply
                     </div>
 
                     {/* ---- HOVER ACTIONS: React / Edit / Delete (no Reply-to-reply — threads stay one level deep) ---- */}
-                    <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 flex items-center gap-3 opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity bg-white shadow-md rounded-full px-3 py-1.5 whitespace-nowrap z-10">
+                    <div className="hidden">
                       <ReactionPicker onSelect={(emoji) => onToggleReaction(reply.id, emoji)} />
                       <div className="relative">
                         <button
@@ -274,7 +314,7 @@ function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply
                             if (reactionLongPressed.current) { reactionLongPressed.current = false; return }
                             onToggleReaction(reply.id, emoji)
                           }}
-                          onTouchStart={(e) => startReactionPress(e, emoji, userIds)}
+                          onTouchStart={(e) => { e.stopPropagation(); startReactionPress(e, emoji, userIds) }}
                           onTouchMove={cancelReactionPress}
                           onTouchEnd={endReactionPress}
                           onTouchCancel={endReactionPress}
@@ -305,6 +345,24 @@ function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply
           )
         })}
       </div>
+
+      {menu && (
+        <MessageMenu
+          x={menu.x}
+          y={menu.y}
+          openedAt={menu.openedAt}
+          preview={menu.reply.content}
+          onClose={() => setMenu(null)}
+          onReact={(emoji) => onToggleReaction(menu.reply.id, emoji)}
+          onCopy={() => handleCopy(menu.reply.id, menu.reply.content)}
+          onEdit={menu.reply.user_id === currentUserId || canManageMessages ? () => startEditing(menu.reply) : undefined}
+          onDelete={
+            menu.reply.user_id === currentUserId || canManageMessages
+              ? () => { if (window.confirm('Delete this reply?')) handleDeleteMessage(menu.reply.id, parentMessage.id) }
+              : undefined
+          }
+        />
+      )}
 
       {openReactorList && (
         <ReactorList
