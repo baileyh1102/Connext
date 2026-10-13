@@ -124,6 +124,7 @@ function GroupInfoPanel({ conversation, currentUserId, onClose, onChanged, onLef
       setMessage("Couldn't delete the group.")
       return
     }
+    window.dispatchEvent(new CustomEvent('dm-conversation-removed', { detail: { id: conversation.id } }))
     onLeft()
   }
 

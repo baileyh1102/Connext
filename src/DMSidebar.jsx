@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabaseClient'
 import StatusDot from './StatusDot'
 import { usePresence, getEffectiveStatus } from './usePresence'
@@ -152,6 +152,7 @@ function DMSidebar({ currentUserId, selectedConversation, onSelectConversation, 
     const channel = supabase
       .channel('dm-sidebar')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_conversations' }, fetchConversations)
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'dm_conversations' }, (payload) => removeConversation(payload.old?.id))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_conversation_members' }, fetchConversations)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'dm_messages' }, () => {
         fetchConversations()
@@ -161,6 +162,21 @@ function DMSidebar({ currentUserId, selectedConversation, onSelectConversation, 
 
     return () => supabase.removeChannel(channel)
   }, [currentUserId])
+
+  // Take a deleted or left conversation out of the list, and close it if it's open
+  const selectedIdRef = useRef(null)
+  selectedIdRef.current = selectedConversation?.id
+  const removeConversation = (id) => {
+    if (!id) return
+    setConversations((current) => current.filter((c) => c.id !== id))
+    if (selectedIdRef.current === id) onSelectConversation(null)
+  }
+
+  useEffect(() => {
+    const handler = (e) => removeConversation(e.detail?.id)
+    window.addEventListener('dm-conversation-removed', handler)
+    return () => window.removeEventListener('dm-conversation-removed', handler)
+  }, [])
 
   const handleArchive = async (conversationId) => {
     await supabase.from('dm_conversation_archives').upsert(
