@@ -402,7 +402,7 @@ function DMChatView({ conversation, currentUserId, currentUserEmail, otherProfil
               onTouchEnd={cancelPress}
               onTouchCancel={cancelPress}
               onContextMenu={(e) => {
-                if (e.defaultPrevented) return
+                if (e.nativeEvent.defaultPrevented) return
                 e.preventDefault()
                 openMenu(msg, e.clientX, e.clientY)
               }}
@@ -446,7 +446,7 @@ function DMChatView({ conversation, currentUserId, currentUserEmail, otherProfil
                     <DMPollMessage messageId={msg.id} currentUserId={currentUserId} />
                     <DMChecklistMessage messageId={msg.id} currentUserId={currentUserId} myProfile={myProfile} otherProfile={otherProfile} />
 
-                    <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 flex items-center gap-3 opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity bg-white shadow-md rounded-full px-3 py-1.5 whitespace-nowrap z-10">
+                    <div className="hidden">
                       <ReactionPicker onSelect={(emoji) => handleToggleReaction(msg.id, emoji)} />
                       <div className="relative">
                         <button onClick={() => handleCopy(msg.id, msg.content)} className="text-gray-400 hover:text-gray-600" title="Copy">

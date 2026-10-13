@@ -369,7 +369,7 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
                 onTouchEnd={cancelPress}
                 onTouchCancel={cancelPress}
                 onContextMenu={(e) => {
-                  if (e.defaultPrevented) return // a reaction chip already handled this right-click
+                  if (e.nativeEvent.defaultPrevented) return // a reaction chip already handled this right-click
                   e.preventDefault()
                   openMenu(msg, e.clientX, e.clientY)
                 }}
@@ -418,7 +418,7 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
                        <ChecklistMessage messageId={msg.id} currentUserId={currentUserId} profilesMap={profilesMap} />
 
                       {/* ---- HOVER ACTIONS: React / Reply / Edit / Delete — positioned to the RIGHT of the bubble ---- */}
-                      <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 flex items-center gap-3 opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity bg-white shadow-md rounded-full px-3 py-1.5 whitespace-nowrap z-10">
+                      <div className="hidden">
                         <ReactionPicker onSelect={(emoji) => onToggleReaction(msg.id, emoji)} />
                         <button
                           onClick={() => onOpenThread(msg)}
