@@ -60,7 +60,7 @@ function GroupInfoPanel({ conversation, currentUserId, onClose, onChanged, onLef
     const run = async () => {
       let q = supabase.from('profiles').select('user_id, display_name, avatar_url').in('user_id', candidateIds)
       if (search.trim()) q = q.ilike('display_name', `%${search}%`)
-      const { data } = await q.order('display_name').limit(15)
+      const { data } = await q.order('display_name').limit(30)
       setResults(data || [])
     }
     run()
@@ -220,6 +220,7 @@ function GroupInfoPanel({ conversation, currentUserId, onClose, onChanged, onLef
           )}
           {results
             .filter((p) => !picks.some((x) => x.user_id === p.user_id))
+            .slice(0, 5)
             .map((p) => (
               <button
                 key={p.user_id}

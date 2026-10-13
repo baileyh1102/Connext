@@ -263,7 +263,7 @@ function DMSidebar({ currentUserId, selectedConversation, onSelectConversation, 
     const search = async () => {
       let q = supabase.from('profiles').select('user_id, display_name, avatar_url').in('user_id', mutualIds)
       if (groupSearch.trim()) q = q.ilike('display_name', `%${groupSearch}%`)
-      const { data } = await q.order('display_name').limit(15)
+      const { data } = await q.order('display_name').limit(30)
       setGroupResults(data || [])
     }
     search()
@@ -438,6 +438,7 @@ function DMSidebar({ currentUserId, selectedConversation, onSelectConversation, 
 
           {groupResults
             .filter((p) => !groupPicks.some((g) => g.user_id === p.user_id))
+            .slice(0, 5)
             .map((p) => (
               <button
                 key={p.user_id}
