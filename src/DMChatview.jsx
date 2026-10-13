@@ -72,6 +72,17 @@ function DMChatView({ conversation, currentUserId, currentUserEmail, otherProfil
   const fileInputRef = useRef(null)
   const textareaRef = useRef(null)
 
+  // Who's who: works for a 1:1 DM and for a group
+  const isGroup = !!conversation?.is_group
+  const profilesById = {}
+  if (myProfile) profilesById[currentUserId] = myProfile
+  if (isGroup) {
+    ;(conversation.memberProfiles || []).forEach((p) => { profilesById[p.user_id] = p })
+  } else if (otherProfile) {
+    profilesById[conversation.user_a === currentUserId ? conversation.user_b : conversation.user_a] = otherProfile
+  }
+  const nameFor = (id) => (id === currentUserId ? 'You' : (profilesById[id]?.display_name || (isGroup ? 'Member' : 'Someone')))
+
   useEffect(() => {
     if (!conversation) return
 
@@ -308,7 +319,7 @@ function DMChatView({ conversation, currentUserId, currentUserEmail, otherProfil
   }
 
   const getReactorNames = (userIds) => {
-    const names = userIds.map((id) => (id === currentUserId ? 'You' : (otherProfile?.display_name || 'Someone')))
+    const names = userIds.map((id) => nameFor(id))
     if (names.length <= 3) return names.join(', ')
     return `${names.slice(0, 3).join(', ')}, and ${names.length - 3} more`
   }
@@ -328,7 +339,7 @@ function DMChatView({ conversation, currentUserId, currentUserEmail, otherProfil
       >
         {messages.map((msg) => {
           const isOwn = msg.sender_id === currentUserId
-          const senderProfile = isOwn ? null : otherProfile
+          const senderProfile = isOwn ? null : (isGroup ? profilesById[msg.sender_id] : otherProfile)
           const isBeingEdited = editingMessage?.id === msg.id
           const groupedReactions = getGroupedReactions(msg.id)
 
@@ -429,7 +440,7 @@ function DMChatView({ conversation, currentUserId, currentUserEmail, otherProfil
                             e.preventDefault()
                             setOpenReactorList({
                               emoji,
-                              names: userIds.map((id) => (id === currentUserId ? 'You' : (otherProfile?.display_name || 'Someone'))),
+                              names: userIds.map((id) => nameFor(id)),
                               anchorPosition: { x: e.clientX, y: e.clientY },
                             })
                           }}
@@ -628,7 +639,7 @@ function DMChatView({ conversation, currentUserId, currentUserEmail, otherProfil
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
             onKeyDown={handleInputKeyDown}
-            placeholder={pendingFile ? 'Add a caption...' : `Message ${otherProfile?.display_name || 'member'}...`}
+            placeholder={pendingFile ? 'Add a caption...' : `Message ${isGroup ? (conversation.displayName || 'group') : (otherProfile?.display_name || 'member')}...`}
             rows={Math.min(newMessage.split('\n').length, 6)}
             className="block w-full border rounded px-2 py-1.5 resize-none"
           />

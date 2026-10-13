@@ -46,6 +46,10 @@ function App() {
       setConversationOtherProfile(null)
       return
     }
+    if (selectedConversation.is_group) {
+      setConversationOtherProfile(null)
+      return
+    }
     const otherId = selectedConversation.user_a === session.user.id ? selectedConversation.user_b : selectedConversation.user_a
     const fetchOtherProfile = async () => {
       const { data } = await supabase.from('profiles').select('*').eq('user_id', otherId).single()
@@ -949,14 +953,14 @@ function App() {
               </div>
               {currentPage === 'dm' && (
                 <span className="md:hidden font-heading font-semibold text-gray-900 truncate max-w-[9rem]">
-                  {conversationOtherProfile?.display_name || 'Messages'}
+                  {selectedConversation?.is_group ? selectedConversation.displayName : (conversationOtherProfile?.display_name || 'Messages')}
                 </span>
               )}
               {currentPage === 'chat' && selectedChannel && selectedServer && (
                 <ChannelViewerCount channel={selectedChannel} server={selectedServer} />
               )}
               {currentPage === 'dm' && (
-                <span className="hidden md:inline text-gray-400 text-sm">{conversationOtherProfile?.display_name || '...'}</span>
+                <span className="hidden md:inline text-gray-400 text-sm">{selectedConversation?.is_group ? selectedConversation.displayName : (conversationOtherProfile?.display_name || '...')}</span>
               )}
             </div>
             <div className="flex items-center gap-3">
