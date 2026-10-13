@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from './supabaseClient'
+import MinistryView from './MinistryView'
 
 function MinistryPage({ currentUserId, serverId, canManage, onChanged }) {
   const [rows, setRows] = useState([])
