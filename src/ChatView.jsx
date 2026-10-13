@@ -601,6 +601,17 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
               onClick={(e) => e.stopPropagation()}
             >
               <div className="mx-auto w-10 h-1 bg-gray-300 rounded-full my-2" />
+              <div className="flex justify-around px-2 pb-2 mb-1 border-b border-gray-100">
+                {['💪', '👑', '❤️', '😂', '🙏', '🎉', '😮', '😢', '🤔'].map((emoji) => (
+                  <button
+                    key={emoji}
+                    className="text-2xl w-11 h-11 rounded-full hover:bg-gray-100 active:bg-gray-200"
+                    onClick={() => { onToggleReaction(actionMsg.id, emoji); setActionMsg(null) }}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
               {actionMsg.content && (
                 <p className="px-4 pb-2 text-sm text-gray-500 line-clamp-2">{actionMsg.content}</p>
               )}
