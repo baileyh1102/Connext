@@ -333,7 +333,15 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-x-hidden bg-gray-100"> 
+    <div
+      className="flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-x-hidden"
+      style={{
+        backgroundImage: `url(${chatBg})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+      }}
+    > 
       {/* ---- CHAT MESSAGE LIST ---- */}
       <div
         ref={scrollContainerRef}
