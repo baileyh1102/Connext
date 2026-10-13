@@ -65,7 +65,8 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
   const [actionMsg, setActionMsg] = useState(null)
   const [reactionViewer, setReactionViewer] = useState(null) // { emoji, userIds } for the "who reacted" sheet
   const reactionTimer = useRef(null)
-  const reactionLongPressed = useRef(false) // message whose long-press menu is open
+  const reactionLongPressed = useRef(false)
+  const sheetOpenedAt = useRef(0) // message whose long-press menu is open
   const pressTimer = useRef(null)
   const pressStart = useRef(null)
   const [editingMessage, setEditingMessage] = useState(null) // the message object currently being edited, or null
@@ -190,6 +191,7 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
     reactionTimer.current = setTimeout(() => {
       reactionLongPressed.current = true
       if (navigator.vibrate) navigator.vibrate(15)
+      sheetOpenedAt.current = Date.now()
       setReactionViewer({ emoji, userIds })
     }, 450)
   }
@@ -210,6 +212,7 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
     clearTimeout(pressTimer.current)
     pressTimer.current = setTimeout(() => {
       if (navigator.vibrate) navigator.vibrate(15)
+      sheetOpenedAt.current = Date.now()
       setActionMsg(msg)
     }, 450)
   }
@@ -557,7 +560,7 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
       <div className="bg-white">
         {/* ---- Who reacted ---- */}
         {reactionViewer && (
-          <div className="fixed inset-0 z-50" onClick={() => setReactionViewer(null)}>
+          <div className="fixed inset-0 z-50 md:hidden" onClick={() => { if (Date.now() - sheetOpenedAt.current < 500) return; setActionMsg(null) }}>
             <div className="absolute inset-0 bg-black/40" />
             <div
               className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl p-4 pb-[max(env(safe-area-inset-bottom),16px)] shadow-2xl max-h-[60vh] overflow-y-auto"
