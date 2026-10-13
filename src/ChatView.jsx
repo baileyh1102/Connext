@@ -333,7 +333,7 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-x-hidden bg-gray-100">
+    <div className="flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-x-hidden bg-[#e0effd]"> 
       {/* ---- CHAT MESSAGE LIST ---- */}
       <div
         ref={scrollContainerRef}
@@ -820,8 +820,7 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
               <line x1="12" y1="19" x2="12" y2="5" />
               <polyline points="5 12 12 5 19 12" />
             </svg>
-            className="flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-x-hidden bg-[#e0effd]"
-          </button>
+            </button>
         </div>
         </form>
       </div>
