@@ -43,6 +43,7 @@ function App() {
   const isServerCreator = !!selectedServer && selectedServer.created_by === session?.user?.id
   const showMinistry = ministry.showMinistry || isServerCreator
   const ministryCanManage = ministry.canManage || isServerCreator
+  const ministryIsLeader = ministry.isLeader || ministryCanManage
   const [selectedConversation, setSelectedConversation] = useState(null)
   const [conversationOtherProfile, setConversationOtherProfile] = useState(null)
 
@@ -1041,6 +1042,7 @@ function App() {
               currentUserId={session.user.id}
               serverId={selectedServer.id}
               canManage={ministryCanManage}
+              isLeader={ministryIsLeader}
               onChanged={ministry.refresh}
             />
           )}

@@ -3,7 +3,7 @@ import { supabase } from './supabaseClient'
 import MinistryView from './MinistryView'
 import { MySchedule, MasterRoster } from './MinistrySchedule'
 
-function MinistryPage({ currentUserId, serverId, canManage, onChanged }) {
+function MinistryPage({ currentUserId, serverId, canManage, isLeader, onChanged }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
@@ -28,6 +28,7 @@ function MinistryPage({ currentUserId, serverId, canManage, onChanged }) {
 
   const invites = rows.filter((r) => r.status === 'invited')
   const mine = rows.filter((r) => r.status === 'active')
+  const led = mine.filter((r) => r.is_leader)
 
   const accept = async (ministryId) => {
     await supabase
@@ -68,36 +69,26 @@ function MinistryPage({ currentUserId, serverId, canManage, onChanged }) {
   }
 
   if (selected) {
-    const sel = mine.find((r) => r.ministry_id === selected)
-    return (
-      <MinistryView
-        ministry={sel?.ministries}
-        isLeader={!!sel?.is_leader}
-        currentUserId={currentUserId}
-        serverId={serverId}
-        onBack={() => setSelected(null)}
-      />
-    )
-  }
-  
-  if (false) {
-    const m = mine.find((r) => r.ministry_id === selected)
-    return (
-      <div className="h-full overflow-y-auto p-4">
-        <button onClick={() => setSelected(null)} className="text-sm text-blue-600 mb-3">
-          ← All ministries
-        </button>
-        <h2 className="text-xl font-semibold">{m?.ministries.name}</h2>
-        <p className="text-sm text-gray-500 mt-1">
-          Members, positions and dated events are coming in the next steps.
-        </p>
-      </div>
-    )
+    const sel = led.find((r) => r.ministry_id === selected)
+    if (sel) {
+      return (
+        <MinistryView
+          ministry={sel.ministries}
+          isLeader={true}
+          currentUserId={currentUserId}
+          serverId={serverId}
+          onBack={() => setSelected(null)}
+          onDeleted={async () => { setSelected(null); await load(); onChanged?.() }}
+        />
+      )
+    }
   }
 
   return (
     <div className="h-full overflow-y-auto p-4 max-w-2xl mx-auto w-full">
       <h2 className="text-xl font-semibold mb-4">Schedule</h2>
+
+      {loading && <p className="text-sm text-gray-400">Loading…</p>}
 
       {mine.length > 0 && (
         <>
@@ -106,9 +97,7 @@ function MinistryPage({ currentUserId, serverId, canManage, onChanged }) {
         </>
       )}
 
-      {loading && <p className="text-sm text-gray-400">Loading…</p>}
-
-      {invites.length > 0 && (
+      {isLeader && invites.length > 0 && (
         <div className="mb-6">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Invitations</h3>
           <div className="space-y-2">
@@ -129,22 +118,24 @@ function MinistryPage({ currentUserId, serverId, canManage, onChanged }) {
         </div>
       )}
 
-      <div className="mb-6">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Your ministries</h3>
-        {!loading && mine.length === 0 && <p className="text-sm text-gray-400">You're not in a ministry yet.</p>}
-        <div className="space-y-2">
-          {mine.map((r) => (
-            <button
-              key={r.ministry_id}
-              onClick={() => setSelected(r.ministry_id)}
-              className="w-full text-left border border-gray-200 rounded-lg p-3 hover:bg-gray-50 flex items-center justify-between"
-            >
-              <span className="font-medium">{r.ministries.name}</span>
-              {r.is_leader && <span className="text-xs text-gray-500">Leader</span>}
-            </button>
-          ))}
+      {isLeader && (
+        <div className="mb-6">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Ministries you lead</h3>
+          {!loading && led.length === 0 && <p className="text-sm text-gray-400">You don't lead a ministry yet.</p>}
+          <div className="space-y-2">
+            {led.map((r) => (
+              <button
+                key={r.ministry_id}
+                onClick={() => setSelected(r.ministry_id)}
+                className="w-full text-left border border-gray-200 rounded-lg p-3 hover:bg-gray-50 flex items-center justify-between"
+              >
+                <span className="font-medium">{r.ministries.name}</span>
+                <span className="text-xs text-gray-500">Leader</span>
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {canManage && (
         <div>

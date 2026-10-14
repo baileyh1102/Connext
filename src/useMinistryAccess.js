@@ -1,26 +1,29 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from './supabaseClient'
 
-// Tells App whether to show the Ministry tab for the current server:
-// true if the user is active in or invited to a ministry here,
-// or has the "Manage ministries" permission.
+// Tells App what to show for the current server:
+//  - inMinistry: user is an ACTIVE member of at least one ministry here
+//  - isLeader:   user leads at least one of them
+//  - canManage:  user has the "Manage ministries" permission
 export default function useMinistryAccess(userId, serverId) {
   const [inMinistry, setInMinistry] = useState(false)
+  const [isLeader, setIsLeader] = useState(false)
   const [canManage, setCanManage] = useState(false)
 
   const refresh = useCallback(async () => {
     if (!userId || !serverId) {
       setInMinistry(false)
+      setIsLeader(false)
       setCanManage(false)
       return
     }
     const [{ data: mem }, { data: perm }] = await Promise.all([
       supabase
         .from('ministry_members')
-        .select('ministry_id, ministries!inner(server_id)')
+        .select('is_leader, ministries!inner(server_id)')
         .eq('user_id', userId)
-        .eq('ministries.server_id', serverId)
-        .limit(1),
+        .eq('status', 'active')
+        .eq('ministries.server_id', serverId),
       supabase
         .from('server_members')
         .select('manage_ministries')
@@ -29,6 +32,7 @@ export default function useMinistryAccess(userId, serverId) {
         .maybeSingle(),
     ])
     setInMinistry((mem || []).length > 0)
+    setIsLeader((mem || []).some((r) => r.is_leader))
     setCanManage(!!perm?.manage_ministries)
   }, [userId, serverId])
 
@@ -48,5 +52,5 @@ export default function useMinistryAccess(userId, serverId) {
     }
   }, [refresh, userId, serverId])
 
-  return { inMinistry, canManage, showMinistry: inMinistry || canManage, refresh }
+  return { inMinistry, isLeader, canManage, showMinistry: inMinistry || canManage, refresh }
 }

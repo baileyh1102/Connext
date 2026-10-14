@@ -93,6 +93,16 @@ function NotificationBell({ currentUserId }) {
     setNotifications((current) => current.filter((n) => n.id !== id))
   }
 
+  const respondToInvite = async (n, join) => {
+    if (join) {
+      await supabase.from('ministry_members').update({ status: 'active' }).eq('ministry_id', n.ministry_id).eq('user_id', currentUserId)
+    } else {
+      await supabase.from('ministry_members').delete().eq('ministry_id', n.ministry_id).eq('user_id', currentUserId)
+    }
+    await handleDelete(n.id)
+    setSelectedNotification(null)
+  }
+
   const respondToSlot = async (n, status) => {
     const { error } = await supabase.rpc('respond_to_slot', { slot_id: n.slot_id, new_status: status })
     if (error) return
@@ -102,6 +112,18 @@ function NotificationBell({ currentUserId }) {
 
   // Confirm / Can't make it buttons for a scheduling notification
   const renderSlotActions = (n) => {
+    if (n.type === 'ministry_invite' && n.ministry_id) {
+      return (
+        <div className="flex items-center gap-2 mt-2">
+          <button onClick={() => respondToInvite(n, true)} className="px-2.5 py-1 rounded-md bg-gray-800 text-white text-xs">
+            Join
+          </button>
+          <button onClick={() => respondToInvite(n, false)} className="px-2.5 py-1 rounded-md border border-gray-300 text-xs">
+            Decline
+          </button>
+        </div>
+      )
+    }
     if (n.type !== 'ministry_assignment' || !n.slot_id) return null
     const info = slotInfo[n.slot_id]
     if (!info || info.user_id !== currentUserId) {
