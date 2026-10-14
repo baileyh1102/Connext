@@ -6,7 +6,7 @@ const PAGES = [
   { id: 'chat', label: 'Chat' },
   { id: 'home', label: 'Community' },
   { id: 'calendar', label: 'Calendar' },
-  { id: 'ministry', label: 'Ministry' },
+  { id: 'ministry', label: 'Schedule' },
 ]
 
 function PageNav({ currentPage, setCurrentPage, showMinistry }) {
