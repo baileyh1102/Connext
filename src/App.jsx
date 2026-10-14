@@ -1100,7 +1100,7 @@ function App() {
                 ? [
                     {
                       id: 'ministry',
-                      label: 'Ministry',
+                      label: 'Schedule',
                       icon: (
                         <>
                           <circle cx="9" cy="8" r="3" />

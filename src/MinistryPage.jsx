@@ -97,7 +97,7 @@ function MinistryPage({ currentUserId, serverId, canManage, onChanged }) {
 
   return (
     <div className="h-full overflow-y-auto p-4 max-w-2xl mx-auto w-full">
-      <h2 className="text-xl font-semibold mb-4">Ministry</h2>
+      <h2 className="text-xl font-semibold mb-4">Schedule</h2>
 
       {mine.length > 0 && (
         <>
