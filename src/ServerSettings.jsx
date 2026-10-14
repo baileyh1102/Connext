@@ -347,7 +347,7 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onLeav
           ))}
         </div>
 
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 min-h-0 flex flex-col min-w-0">
           <div className="flex justify-between items-center p-4 border-b">
             <h2 className="font-bold">{TABS.find((t) => t.id === activeTab)?.label}</h2>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
