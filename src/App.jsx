@@ -1265,6 +1265,7 @@ function App() {
               value={birthDate}
               onChange={(e) => setBirthDate(e.target.value)}
               max={new Date().toISOString().slice(0, 10)}
+              style={{ minWidth: 0, maxWidth: '100%', WebkitAppearance: 'none', appearance: 'none', boxSizing: 'border-box' }}
               className="w-full p-2 border rounded"
               required
             />

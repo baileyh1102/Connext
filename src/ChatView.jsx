@@ -577,10 +577,10 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
       )}
 
       {/* ---- MESSAGE INPUT BAR ---- */}
-      <div className="bg-transparent relative z-10 -mt-[26px]">
+      <div className="bg-transparent relative -mt-[26px]">
         {/* ---- Who reacted ---- */}
         {reactionViewer && (
-          <div className="fixed inset-0 z-50 md:hidden" onClick={() => { if (Date.now() - sheetOpenedAt.current < 500) return; setActionMsg(null) }}>
+          <div className="fixed inset-0 z-50 md:hidden" onClick={() => { if (Date.now() - sheetOpenedAt.current < 500) return; setActionMsg(null); setReactionViewer(null) }}>
             <div className="absolute inset-0 bg-black/40" />
             <div
               className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl p-4 pb-[max(env(safe-area-inset-bottom),16px)] shadow-2xl max-h-[60vh] overflow-y-auto"

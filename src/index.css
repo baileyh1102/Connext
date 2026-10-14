@@ -1,3 +1,11 @@
+html,
+body {
+  overscroll-behavior: none;
+}
+#root {
+  overscroll-behavior: none;
+}
+
 @import "tailwindcss";
 @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&display=swap');
 
@@ -78,4 +86,18 @@ body,
   img, a {
     -webkit-user-drag: none;
   }
+}
+
+input[type="date"] {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 2.5rem;
+}
+input[type="date"]::-webkit-date-and-time-value {
+  text-align: left;
 }
