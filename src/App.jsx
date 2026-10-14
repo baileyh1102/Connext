@@ -946,7 +946,7 @@ function App() {
         </div>
       <div className="flex flex-col flex-1 min-w-0">
           {/* ---- HEADER: page switcher (Chat/Prayer Wall/Calendar) + avatar button that opens the dashboard dropdown ---- */}
-          <div className="h-[65px] max-md:bg-indigo-900 md:bg-white shadow px-2 md:px-4 flex justify-between items-center relative">
+          <div className="h-[65px] bg-white shadow px-2 md:px-4 flex justify-between items-center relative">
             <img
               src={connextLogo}
               alt="Connext"
@@ -958,7 +958,7 @@ function App() {
                 <PageNav currentPage={currentPage} setCurrentPage={setCurrentPage} showMinistry={showMinistry} />
               </div>
               {currentPage === 'dm' && (
-                <span className="md:hidden font-heading font-semibold text-white truncate max-w-[9rem]">
+                <span className="md:hidden font-heading font-semibold text-gray-900 truncate max-w-[9rem]">
                   {selectedConversation?.is_group ? selectedConversation.displayName : (conversationOtherProfile?.display_name || 'Messages')}
                 </span>
               )}
