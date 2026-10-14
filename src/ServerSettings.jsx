@@ -353,7 +353,7 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onLeav
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
           </div>
 
-          <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6 min-w-0">
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden touch-pan-y p-4 md:p-6 min-w-0">
             {activeTab === 'templates' && (
               <TeamTemplatePicker
                 server={server}
