@@ -54,7 +54,16 @@ function PositionRow({ pos, isLeader, onSave, onDelete }) {
   )
 }
 
-function MinistryView({ ministry, isLeader, currentUserId, serverId, onBack }) {
+function MinistryView({ ministry, isLeader, currentUserId, serverId, onBack, onDeleted }) {
+  const deleteMinistry = async () => {
+    if (!window.confirm(`Delete "${ministry.name}"? This permanently removes its members, positions, events and rosters.`)) return
+    const { data, error: err } = await supabase.from('ministries').delete().eq('id', ministry.id).select()
+    if (err || !data?.length) {
+      setError(err?.message || 'Could not delete this ministry.')
+      return
+    }
+    onDeleted?.()
+  }
   const [tab, setTab] = useState('members')
   const [error, setError] = useState('')
 
@@ -293,7 +302,14 @@ function MinistryView({ ministry, isLeader, currentUserId, serverId, onBack }) {
   return (
     <div className="h-full overflow-y-auto p-4 max-w-2xl mx-auto w-full">
       <button onClick={onBack} className="text-sm text-blue-600 mb-3">← All ministries</button>
-      <h2 className="text-xl font-semibold mb-3">{ministry.name}</h2>
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <h2 className="text-xl font-semibold min-w-0 truncate">{ministry.name}</h2>
+        {isLeader && (
+          <button onClick={deleteMinistry} className="text-sm text-red-600 shrink-0">
+            Delete ministry
+          </button>
+        )}
+      </div>
 
       <div className="flex gap-1 mb-4">
         {['members', 'positions', 'events'].map((t) => (
