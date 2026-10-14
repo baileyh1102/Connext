@@ -121,7 +121,11 @@ export function MasterRoster({ serverId }) {
       .select('id, title, ministries!inner(name, server_id), ministry_slots(id, name, start_time, end_time, sort_order, user_id, status)')
       .eq('service_date', sunday)
       .eq('ministries.server_id', serverId)
-    const rows = (data || []).sort((a, b) => a.ministries.name.localeCompare(b.ministries.name))
+    const rows = (data || []).sort(
+      (a, b) =>
+        a.ministries.name.localeCompare(b.ministries.name, undefined, { sensitivity: 'base' }) ||
+        (a.title || '').localeCompare(b.title || '')
+    )
     setPages(rows)
     const ids = [...new Set(rows.flatMap((p) => p.ministry_slots.map((s) => s.user_id).filter(Boolean)))]
     if (ids.length) {

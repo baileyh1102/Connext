@@ -27,7 +27,9 @@ function MinistryPage({ currentUserId, serverId, canManage, isLeader, onChanged 
   }, [load])
 
   const invites = rows.filter((r) => r.status === 'invited')
-  const mine = rows.filter((r) => r.status === 'active')
+  const mine = rows
+    .filter((r) => r.status === 'active')
+    .sort((a, b) => a.ministries.name.localeCompare(b.ministries.name, undefined, { sensitivity: 'base' }))
   const led = mine.filter((r) => r.is_leader)
 
   const accept = async (ministryId) => {
