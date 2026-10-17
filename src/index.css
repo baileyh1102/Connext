@@ -101,10 +101,28 @@ input[type="date"]::-webkit-date-and-time-value {
   text-align: left;
 }
 
-@keyframes thread-in {
-  0% { transform: translateX(28px); opacity: 0; }
-  60% { transform: translateX(-3px); opacity: 1; }
-  80% { transform: translateX(1px); }
+/* Thread panel: phone slides in/out, computer grows/shrinks its width */
+.thread-in { animation: thread-in-phone 0.32s ease-out; }
+.thread-out { animation: thread-out-phone 0.22s ease-in forwards; }
+@keyframes thread-in-phone {
+  0% { transform: translateX(100%); opacity: 0; }
+  70% { transform: translateX(-1.5%); opacity: 1; }
   100% { transform: translateX(0); opacity: 1; }
 }
-.thread-in { animation: thread-in 0.32s ease-out; }
+@keyframes thread-out-phone {
+  to { transform: translateX(100%); opacity: 0; }
+}
+@media (min-width: 768px) {
+  .thread-in { animation-name: thread-in-desk; }
+  .thread-out { animation-name: thread-out-desk; }
+  .thread-in > div:not([class]), .thread-out > div:not([class]) { min-width: 24rem; }
+  @keyframes thread-in-desk {
+    0% { width: 0; opacity: 0; }
+    70% { width: 24.4rem; opacity: 1; }
+    100% { width: 24rem; opacity: 1; }
+  }
+  @keyframes thread-out-desk {
+    from { width: 24rem; opacity: 1; }
+    to { width: 0; opacity: 0; }
+  }
+}

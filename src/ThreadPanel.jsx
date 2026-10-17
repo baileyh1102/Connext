@@ -12,6 +12,8 @@ import { detectMentionQuery, insertMention, mentionify } from './mentions'
 // reply bubble into a textarea in place — same pattern as ChatView.
 function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply, formatTime, currentUserId, handleEditMessage, handleDeleteMessage, reactionsMap, onToggleReaction, canManageMessages, serverMembers = [] }) {
   const [replyText, setReplyText] = useState('')
+  const [closing, setClosing] = useState(false)
+  const requestClose = () => { if (closing) return; setClosing(true); setTimeout(onClose, 220) }
   const [editingReply, setEditingReply] = useState(null) // the reply object currently being edited, or null
   const [copiedId, setCopiedId] = useState(null)
   const [openReactorList, setOpenReactorList] = useState(null)
@@ -158,15 +160,15 @@ function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply
   }
 
   return (
-    <div className="thread-in fixed inset-0 z-40 md:static md:inset-auto md:z-auto w-full md:w-96 bg-white md:border-l flex flex-col h-full min-w-0 overflow-x-hidden">
+    <div className={`${closing ? 'thread-out' : 'thread-in'} fixed inset-0 z-40 md:static md:inset-auto md:z-auto w-full md:w-96 bg-white md:border-l flex flex-col h-full min-w-0 overflow-x-hidden`}>
       {/* ---- HEADER ---- */}
-      <div className="p-4 md:py-0 md:h-[65px] border-b md:border-gray-200 flex justify-between items-center">
+      <div className="p-4 md:py-0 md:h-[65px] md:min-w-[24rem] border-b md:border-gray-200 flex justify-between items-center">
         <h2 className="font-semibold">Thread</h2>
-        <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
+        <button onClick={requestClose} className="text-gray-400 hover:text-gray-600">✕</button>
       </div>
 
       {/* ---- ORIGINAL MESSAGE + REPLIES ---- */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden touch-pan-y p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden touch-pan-y p-4 md:min-w-[24rem] space-y-4">
         {/* The original message being replied to */}
         <div className="flex items-start gap-3 pb-4 border-b">
           {parentProfile?.avatar_url ? (
