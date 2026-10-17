@@ -245,7 +245,9 @@ function ChannelSidebar({ selectedChannel, setSelectedChannel, selectedServer, o
         .select('*')
         .eq('server_id', selectedServer.id)
         .order('position', { ascending: true })
-      setChannels(channelRows || [])
+      const { data: privRows } = await supabase.rpc('private_channel_ids', { p_server_id: selectedServer.id })
+      const privSet = new Set((privRows || []).map((r) => r.channel_id))
+      setChannels((channelRows || []).map((c) => ({ ...c, isPrivate: privSet.has(c.id) })))
       refreshUnreadStatus(channelRows || [])
 
       if (channelRows && channelRows.length > 0) {
