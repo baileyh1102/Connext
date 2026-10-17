@@ -131,10 +131,10 @@ function ServerMenu({ onOpenSettings }) {
       className="text-gray-400 hover:text-white p-1"
       aria-label="Server settings"
     >
-      <div className="flex flex-col gap-[3px]">
-        <span className="block w-4 h-0.5 bg-current rounded-full"></span>
-        <span className="block w-4 h-0.5 bg-current rounded-full"></span>
-        <span className="block w-4 h-0.5 bg-current rounded-full"></span>
+      <div className="flex flex-col gap-[4px]">
+        <span className="block w-4 h-[3px] bg-current rounded-full rounded-full"></span>
+        <span className="block w-4 h-[3px] bg-current rounded-full rounded-full"></span>
+        <span className="block w-4 h-[3px] bg-current rounded-full rounded-full"></span>
       </div>
     </button>
   )
