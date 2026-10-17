@@ -947,7 +947,7 @@ function App() {
         </div>
       <div className="flex flex-col flex-1 min-w-0">
           {/* ---- HEADER: page switcher (Chat/Prayer Wall/Calendar) + avatar button that opens the dashboard dropdown ---- */}
-          <div className="h-[65px] bg-white shadow px-2 md:px-4 flex justify-between items-center relative">
+          <div className="h-[65px] bg-white border-b border-gray-200 px-2 md:px-4 flex justify-between items-center relative">
             <img
               src={connextLogo}
               alt="Connext"

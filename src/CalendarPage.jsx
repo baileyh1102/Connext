@@ -131,9 +131,9 @@ function CalendarPage({ selectedServer, isAdmin }) {
                 aria-label="Calendar settings"
               >
                 <div className="flex flex-col gap-[3px]">
-                  <span className="block w-4 h-0.5 bg-current"></span>
-                  <span className="block w-4 h-0.5 bg-current"></span>
-                  <span className="block w-4 h-0.5 bg-current"></span>
+                  <span className="block w-4 h-0.5 bg-current rounded-full"></span>
+                  <span className="block w-4 h-0.5 bg-current rounded-full"></span>
+                  <span className="block w-4 h-0.5 bg-current rounded-full"></span>
                 </div>
               </button>
 

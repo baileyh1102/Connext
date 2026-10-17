@@ -43,7 +43,7 @@ function ChannelViewerCount({ channel, server }) {
         onClick={() => setShowList(!showList)}
         className="text-gray-400 text-sm hover:text-gray-600 flex items-center gap-1.5"
       >
-        <span># {channel.name}</span>
+        <span className="max-md:text-lg max-md:font-semibold max-md:text-gray-900 max-md:max-w-[8.5rem] max-md:truncate"># {channel.name}</span>
         <span className="text-gray-300">•</span>
         <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
