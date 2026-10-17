@@ -133,7 +133,7 @@ function ChecklistMessage({ messageId, currentUserId, profilesMap }) {
                     if (e.key === 'Enter') { e.preventDefault(); saveEditedItem() }
                     if (e.key === 'Escape') setEditingItemId(null)
                   }}
-                  className="w-full text-sm border rounded px-1 py-0.5"
+                  className="w-full text-base md:text-sm border rounded px-1 py-0.5"
                 />
               ) : (
                 <p
@@ -143,13 +143,26 @@ function ChecklistMessage({ messageId, currentUserId, profilesMap }) {
                   {item.item_text}
                 </p>
               )}
+              {editingItemId === item.id && (
+                <div className="flex gap-3 mt-1 text-xs">
+                  <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={saveEditedItem} className="text-blue-600 font-semibold">
+                    Save
+                  </button>
+                  <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => setEditingItemId(null)} className="text-gray-500">
+                    Cancel
+                  </button>
+                  <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => handleRemoveItem(item.id)} className="text-red-500 ml-auto">
+                    Delete
+                  </button>
+                </div>
+              )}
               {item.is_checked && item.checked_by && (
                 <p className="text-[10px] text-gray-400">Checked by {getCheckerName(item.checked_by)}</p>
               )}
             </div>
             <button
               onClick={() => handleRemoveItem(item.id)}
-              className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+              className="text-gray-400 md:text-gray-300 hover:text-red-500 max-md:opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex-shrink-0 px-1"
               title="Remove item"
             >
               ✕
