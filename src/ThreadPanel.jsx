@@ -158,9 +158,9 @@ function ThreadPanel({ parentMessage, replies, profilesMap, onClose, onSendReply
   }
 
   return (
-    <div className="fixed inset-0 z-40 md:static md:inset-auto md:z-auto w-full md:w-96 bg-white md:border-l flex flex-col h-full min-w-0 overflow-x-hidden">
+    <div className="thread-in fixed inset-0 z-40 md:static md:inset-auto md:z-auto w-full md:w-96 bg-white md:border-l flex flex-col h-full min-w-0 overflow-x-hidden">
       {/* ---- HEADER ---- */}
-      <div className="p-4 border-b flex justify-between items-center">
+      <div className="p-4 md:py-0 md:h-[65px] border-b md:border-gray-200 flex justify-between items-center">
         <h2 className="font-semibold">Thread</h2>
         <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
       </div>

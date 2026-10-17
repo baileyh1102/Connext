@@ -100,3 +100,11 @@ input[type="date"] {
 input[type="date"]::-webkit-date-and-time-value {
   text-align: left;
 }
+
+@keyframes thread-in {
+  0% { transform: translateX(28px); opacity: 0; }
+  60% { transform: translateX(-3px); opacity: 1; }
+  80% { transform: translateX(1px); }
+  100% { transform: translateX(0); opacity: 1; }
+}
+.thread-in { animation: thread-in 0.32s ease-out; }
