@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext } from 'react'
+import { useState, useEffect, useRef, createContext, useContext } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabaseClient'
 import {
@@ -14,6 +14,7 @@ import {
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
 import ChannelSettings from './ChannelSettings'
 import ChannelIcon from './ChannelIcon'
+import { setCatchUpCutoff } from './catchUp'
 import CategorySettings from './CategorySettings'
 
 const UNCATEGORIZED = 'uncategorized'
@@ -221,6 +222,12 @@ function ChannelSidebar({ selectedChannel, setSelectedChannel, selectedServer, o
   }, [selectedServer, currentUserId])
 
   const [mutedChannelIds, setMutedChannelIds] = useState(new Set())
+  const prevSelectedIdRef = useRef(null)
+  useEffect(() => {
+    const prev = prevSelectedIdRef.current
+    prevSelectedIdRef.current = selectedChannel?.id ?? null
+    if (prev && prev !== selectedChannel?.id) markChannelRead(prev)
+  }, [selectedChannel?.id])
 
   const refreshUnreadStatus = async (channelList) => {
     if (!channelList || channelList.length === 0) return
@@ -267,6 +274,13 @@ function ChannelSidebar({ selectedChannel, setSelectedChannel, selectedServer, o
   }
 
   const markChannelRead = async (channelId) => {
+    const { data: prevRead } = await supabase
+      .from('channel_reads')
+      .select('last_read_at')
+      .eq('user_id', currentUserId)
+      .eq('channel_id', channelId)
+      .maybeSingle()
+    setCatchUpCutoff(channelId, prevRead?.last_read_at ?? null)
     setUnreadChannelIds((current) => {
       const updated = new Set(current)
       updated.delete(channelId)
@@ -335,13 +349,17 @@ function ChannelSidebar({ selectedChannel, setSelectedChannel, selectedServer, o
         const msg = payload.new
         if (msg.user_id === currentUserId) return
         if (!channels.some((c) => c.id === msg.channel_id)) return
+        if (msg.channel_id === selectedChannel?.id && document.visibilityState === 'visible') {
+          supabase.from('channel_reads').upsert({ user_id: currentUserId, channel_id: msg.channel_id, last_read_at: new Date().toISOString() }, { onConflict: 'user_id,channel_id' })
+          return
+        }
         if (mutedChannelIds.has(msg.channel_id)) return
         setUnreadChannelIds((current) => new Set(current).add(msg.channel_id))
       })
       .subscribe()
 
     return () => supabase.removeChannel(channel)
-  }, [channels, selectedServer, currentUserId, mutedChannelIds])
+  }, [channels, selectedServer, currentUserId, mutedChannelIds, selectedChannel?.id])
 
   const handleChannelDeleted = async (channelId) => {
     await supabase.from('messages').delete().eq('channel_id', channelId)

@@ -15,6 +15,7 @@ import MentionAutocomplete from './MentionAutocomplete'
 import { detectMentionQuery, insertMention, mentionify } from './mentions'
 import ReactorList from './ReactorList'
 import chatBg from './assets/chat-bg.png'
+import { useCatchUpCutoff } from './catchUp'
 
 // Renders a message's attachment according to its type — an image, a video/audio
 // player, or a document link for PDFs. Images and videos open in a full-screen
@@ -89,6 +90,30 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
   const [showPollCreator, setShowPollCreator] = useState(false)
   const [showChecklistCreator, setShowChecklistCreator] = useState(false)
   const [showSchedulePicker, setShowSchedulePicker] = useState(false)
+  const catchUp = useCatchUpCutoff(selectedChannelId) // { cutoff, capturedAt } saved by the sidebar when the channel was opened
+  const [dismissedKey, setDismissedKey] = useState(null)
+  const catchUpKey = catchUp?.cutoff ? `${selectedChannelId}|${catchUp.cutoff}` : null
+  const firstNewId = catchUpKey && dismissedKey !== catchUpKey
+    ? messages.find((m) => m.user_id !== currentUserId && new Date(m.created_at) > new Date(catchUp.cutoff) && new Date(m.created_at).getTime() <= catchUp.capturedAt)?.id
+    : null
+  const dismissTimer = useRef(null)
+  const handleChatScroll = (e) => {
+    if (!firstNewId || dismissTimer.current) return
+    const el = e.currentTarget
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 40) {
+      const key = catchUpKey
+      dismissTimer.current = setTimeout(() => { dismissTimer.current = null; setDismissedKey(key) }, 1200)
+    }
+  }
+  // if the whole chat fits on screen there is nothing to scroll, so fade the line out on its own
+  useEffect(() => {
+    const el = scrollContainerRef.current
+    if (!firstNewId || !el) return
+    const t = setTimeout(() => {
+      if (el.scrollHeight <= el.clientHeight + 4) setDismissedKey(catchUpKey)
+    }, 1500)
+    return () => clearTimeout(t)
+  }, [firstNewId, catchUpKey])
   const [mentionQuery, setMentionQuery] = useState(null) // the partial name being typed after "@", or null
   const [openReactorList, setOpenReactorList] = useState(null) // { emoji, names, anchorPosition } for the right-clicked pill
 
@@ -121,7 +146,9 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
       const scrollToBottom = () => {
         const container = scrollContainerRef.current
         if (container) {
-          container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+          const line = document.getElementById('catch-up-line')
+          if (line) line.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          else container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
         }
         window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })
       }
@@ -343,8 +370,9 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
       }}
     > 
       {/* ---- CHAT MESSAGE LIST ---- */}
-      <div
+            <div
         ref={scrollContainerRef}
+        onScroll={handleChatScroll}
         className="flex-1 overflow-y-auto overflow-x-hidden touch-pan-y px-4 pt-4 pb-14 space-y-3"
         style={{
           backgroundImage: `url(${chatBg})`,
@@ -362,6 +390,12 @@ function ChatView({ messages, profilesMap, newMessage, setNewMessage, handleSend
 
           return (
             <div key={msg.id}>
+              {msg.id === firstNewId && (
+                <div id="catch-up-line" className="flex items-center my-3 scroll-mt-4">
+                  <div className="flex-1 h-[2px] bg-red-500" />
+                  <span className="ml-2 text-[10px] font-bold tracking-wide text-white bg-red-500 rounded px-1.5 py-0.5">NEW</span>
+                </div>
+              )}
               {showDateStamp && (
                 <div className="flex justify-center my-4">
                   <span className="text-xs bg-gray-200 text-gray-600 px-3 py-1 rounded-full">
