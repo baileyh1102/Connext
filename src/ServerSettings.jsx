@@ -3,6 +3,7 @@ import { supabase } from './supabaseClient'
 import ChannelSettings from './ChannelSettings'
 import TeamTemplatePicker from './TeamTemplatePicker'
 import CategorySettings from './CategorySettings'
+import ChannelIcon from './ChannelIcon'
 
 const TABS = [
   { id: 'general', label: 'General' },
@@ -457,12 +458,12 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onLeav
                     <button
                       key={ch.id}
                       type="button"
-                      onClick={() => canManageChannels && setEditingChannel(ch)}
+                      onClick={() => setEditingChannel(ch)}
                       className={`w-full flex justify-between items-center p-2 rounded text-left ${
                         canManageChannels ? 'hover:bg-gray-50 cursor-pointer' : 'cursor-default'
                       }`}
                     >
-                      <span className="text-sm font-medium"># {ch.name}</span>
+                      <span className="flex items-center gap-2 text-sm font-medium"><ChannelIcon className="text-gray-500" /> {ch.name}</span>
                       {canManageChannels && <span className="text-gray-300">›</span>}
                     </button>
                   ))}
@@ -665,6 +666,7 @@ function ServerSettings({ server, currentUserId, onClose, onDeleteServer, onLeav
       {editingChannel && (
         <ChannelSettings
           channel={editingChannel}
+          canManageChannels={canManageChannels}
           server={server}
           onClose={() => setEditingChannel(null)}
           onDeleted={async (channelId) => {
