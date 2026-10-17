@@ -189,15 +189,15 @@ function ChannelSettings({ channel, server, canManageChannels, onClose, onDelete
   const selectedMemberProfile = members.find((m) => m.user_id === selectedKey)
 
   return createPortal(
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 text-gray-900">
-      <div className="bg-white rounded-lg shadow-lg w-[700px] h-[80vh] flex overflow-hidden">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 text-gray-900 max-md:pt-[env(safe-area-inset-top)]">
+      <div className="bg-white rounded-lg shadow-lg w-[700px] h-[80vh] max-md:w-full max-md:h-full max-md:rounded-none flex max-md:flex-col overflow-hidden">
         <div className="w-48 bg-gray-100 p-4 flex flex-col">
-          <h2 className="text-xs font-semibold text-gray-400 uppercase mb-2 truncate"># {channel.name}</h2>
+          <h2 className="text-xs font-semibold text-gray-400 uppercase mb-2 truncate max-md:mb-0 max-md:mr-2 max-md:max-w-[7rem] max-md:shrink-0"># {channel.name}</h2>
           {ALL_TABS.filter((tab) => canManageChannels || tab.id === 'general').map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`text-left px-3 py-2 rounded text-sm mb-1 ${
+              className={`text-left px-3 py-2 rounded text-sm mb-1 max-md:mb-0 whitespace-nowrap shrink-0 ${
                 activeTab === tab.id ? 'bg-gray-300 font-medium' : 'hover:bg-gray-200 text-gray-600'
               }`}
             >
@@ -206,13 +206,13 @@ function ChannelSettings({ channel, server, canManageChannels, onClose, onDelete
           ))}
         </div>
 
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 min-h-0 min-w-0 flex flex-col">
           <div className="flex justify-between items-center p-4 border-b">
             <h2 className="font-bold">{ALL_TABS.find((t) => t.id === activeTab)?.label}</h2>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden touch-pan-y p-4 md:p-6">
             {activeTab === 'general' && (
               <form onSubmit={handleSaveGeneral}>
                 {!canManageChannels && (
@@ -288,8 +288,8 @@ function ChannelSettings({ channel, server, canManageChannels, onClose, onDelete
             )}
 
             {activeTab === 'permissions' && (
-              <div className="flex gap-6">
-                <div className="w-48 flex-shrink-0">
+              <div className="flex gap-6 max-md:flex-col">
+                <div className="md:w-48 flex-shrink-0">
                   <button
                     onClick={() => setSelectedKey(DEFAULT_KEY)}
                     className={`w-full text-left px-3 py-2 rounded text-sm mb-1 ${
@@ -350,7 +350,7 @@ function ChannelSettings({ channel, server, canManageChannels, onClose, onDelete
                   )}
                 </div>
 
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-semibold">
                       {selectedKey === DEFAULT_KEY ? 'Default permissions' : `${selectedMemberProfile?.display_name || 'Member'}'s overrides`}
