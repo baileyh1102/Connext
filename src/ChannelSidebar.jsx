@@ -16,6 +16,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import ChannelSettings from './ChannelSettings'
+import ChannelIcon from './ChannelIcon'
 import CategorySettings from './CategorySettings'
 
 const UNCATEGORIZED = 'uncategorized'
@@ -46,7 +47,7 @@ function ChannelItem({ ch, isSelected, onSelect, onOpenSettings, canManageChanne
     >
       <span className="flex items-center gap-2">
         {isUnread && <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />}
-        # {ch.name}
+        <ChannelIcon locked={ch.isPrivate} className="opacity-80" /> {ch.name}
       </span>
 
       <button
