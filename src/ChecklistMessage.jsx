@@ -83,6 +83,8 @@ function ChecklistMessage({ messageId, currentUserId, profilesMap }) {
   }
 
   const handleRemoveItem = async (itemId) => {
+    const task = items.find((i) => i.id === itemId)
+    if (!window.confirm(`Delete "${task?.item_text || 'this task'}" from the checklist?`)) return
     await supabase.from('checklist_items').delete().eq('id', itemId)
   }
 
