@@ -132,9 +132,9 @@ function ServerMenu({ onOpenSettings }) {
       aria-label="Server settings"
     >
       <div className="flex flex-col gap-[4px]">
-        <span className="block w-4 h-[3px] bg-current rounded-full rounded-full"></span>
-        <span className="block w-4 h-[3px] bg-current rounded-full rounded-full"></span>
-        <span className="block w-4 h-[3px] bg-current rounded-full rounded-full"></span>
+        <span className="block w-5 h-[3px] bg-current rounded-full rounded-full"></span>
+        <span className="block w-5 h-[3px] bg-current rounded-full rounded-full"></span>
+        <span className="block w-5 h-[3px] bg-current rounded-full rounded-full"></span>
       </div>
     </button>
   )
