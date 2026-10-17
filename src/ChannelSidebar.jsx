@@ -1,39 +1,47 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, createContext, useContext } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from './supabaseClient'
 import {
   DndContext,
+  DragOverlay,
   closestCenter,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   useDroppable,
 } from '@dnd-kit/core'
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-  useSortable,
-  arrayMove,
-} from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
+import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
 import ChannelSettings from './ChannelSettings'
 import ChannelIcon from './ChannelIcon'
 import CategorySettings from './CategorySettings'
 
 const UNCATEGORIZED = 'uncategorized'
 
-function ChannelItem({ ch, isSelected, onSelect, onOpenSettings, canManageChannels, isUnread }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: ch.id, data: { type: 'channel' } })
+// Tells every row where the green "drop here" line should currently be drawn
+const DropContext = createContext(null)
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  }
+function DropLine({ className = '' }) {
+  return (
+    <span className={`pointer-events-none absolute left-1 right-1 z-20 h-[3px] rounded-full bg-green-500 ${className}`} />
+  )
+}
+
+function ChannelItem({ ch, isSelected, onSelect, onOpenSettings, canManageChannels, isUnread }) {
+  const drop = useContext(DropContext)
+  const { attributes, listeners, setNodeRef, isDragging } = useSortable({
+    id: `ch-${ch.id}`,
+    data: { type: 'channel', channelId: ch.id },
+    disabled: !canManageChannels,
+  })
+
+  const lineBefore = drop?.kind === 'channel' && drop.overId === ch.id && drop.pos === 'before'
+  const lineAfter = drop?.kind === 'channel' && drop.overId === ch.id && drop.pos === 'after'
 
   return (
     <div
       ref={setNodeRef}
-      style={style}
+      style={{ opacity: isDragging ? 0.4 : 1 }}
       {...attributes}
       {...listeners}
       onClick={onSelect}
@@ -45,6 +53,9 @@ function ChannelItem({ ch, isSelected, onSelect, onOpenSettings, canManageChanne
         isSelected ? 'bg-gray-700 text-white' : 'hover:bg-gray-700'
       }`}
     >
+      {lineBefore && <DropLine className="-top-[2px]" />}
+      {lineAfter && <DropLine className="-bottom-[2px]" />}
+
       <span className="flex items-center gap-2">
         {isUnread && <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />}
         <ChannelIcon locked={ch.isPrivate} className="opacity-80" /> {ch.name}
@@ -66,18 +77,33 @@ function ChannelItem({ ch, isSelected, onSelect, onOpenSettings, canManageChanne
 // A category section: draggable header (to reorder categories) + a droppable
 // body (to accept channels dragged into it) + collapsible.
 function CategorySection({ category, channels, selectedChannel, onSelectChannel, onOpenChannelSettings, onOpenCategorySettings, canManageChannels, unreadChannelIds, collapsed, onToggleCollapse }) {
-  const { attributes, listeners, setNodeRef: setDragRef, transform, transition, isDragging } = useSortable({ id: category.id, data: { type: 'category' } })
-  const { setNodeRef: setDropRef } = useDroppable({ id: category.id, data: { type: 'category' } })
+  const drop = useContext(DropContext)
+  const { attributes, listeners, setNodeRef: setSectionRef, isDragging } = useSortable({
+    id: `cat-${category.id}`,
+    data: { type: 'category', categoryId: category.id },
+    disabled: !canManageChannels,
+  })
+  const { setNodeRef: setHeadRef } = useDroppable({
+    id: `head-${category.id}`,
+    data: { type: 'categoryBody', categoryId: category.id, zone: 'header' },
+  })
+  const { setNodeRef: setBodyRef } = useDroppable({
+    id: `body-${category.id}`,
+    data: { type: 'categoryBody', categoryId: category.id, zone: 'body' },
+  })
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  }
+  const lineBefore = drop?.kind === 'category' && drop.overId === category.id && drop.pos === 'before'
+  const lineAfter = drop?.kind === 'category' && drop.overId === category.id && drop.pos === 'after'
+  const lineInside = drop?.kind === 'inside' && drop.containerId === category.id
 
   return (
-    <div ref={setDragRef} style={style} className="mb-2">
+    <div ref={setSectionRef} style={{ opacity: isDragging ? 0.4 : 1 }} className="relative mb-2">
+      {lineBefore && <DropLine className="-top-[3px]" />}
+      {lineAfter && <DropLine className="-bottom-[5px]" />}
+      {lineInside && collapsed && <DropLine className="bottom-0" />}
+
       <div
+        ref={setHeadRef}
         {...attributes}
         {...listeners}
         onClick={() => onToggleCollapse(category.id)}
@@ -105,8 +131,9 @@ function CategorySection({ category, channels, selectedChannel, onSelectChannel,
       </div>
 
       {!collapsed && (
-        <div ref={setDropRef} className="min-h-[4px]">
-          <SortableContext items={channels.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+        <div ref={setBodyRef} className="relative min-h-[8px]">
+          {lineInside && <DropLine className={drop.at === 'top' ? 'top-0' : 'bottom-0'} />}
+          <SortableContext items={channels.map((c) => `ch-${c.id}`)} strategy={verticalListSortingStrategy}>
             {channels.map((ch) => (
               <ChannelItem
                 key={ch.id}
@@ -133,11 +160,26 @@ function ServerMenu({ onOpenSettings }) {
       aria-label="Server settings"
     >
       <div className="flex flex-col gap-[4px]">
-        <span className="block w-5 h-[3px] bg-current rounded-full rounded-full"></span>
-        <span className="block w-5 h-[3px] bg-current rounded-full rounded-full"></span>
-        <span className="block w-5 h-[3px] bg-current rounded-full rounded-full"></span>
+        <span className="block w-5 h-[3px] bg-current rounded-full"></span>
+        <span className="block w-5 h-[3px] bg-current rounded-full"></span>
+        <span className="block w-5 h-[3px] bg-current rounded-full"></span>
       </div>
     </button>
+  )
+}
+
+function UncategorizedDroppable({ children }) {
+  const drop = useContext(DropContext)
+  const { setNodeRef } = useDroppable({
+    id: 'body-uncategorized',
+    data: { type: 'categoryBody', categoryId: UNCATEGORIZED, zone: 'body' },
+  })
+  const lineInside = drop?.kind === 'inside' && drop.containerId === UNCATEGORIZED
+  return (
+    <div ref={setNodeRef} className="relative min-h-[8px] mb-2">
+      {lineInside && <DropLine className="bottom-0" />}
+      {children}
+    </div>
   )
 }
 
@@ -149,8 +191,14 @@ function ChannelSidebar({ selectedChannel, setSelectedChannel, selectedServer, o
   const [editingChannel, setEditingChannel] = useState(null)
   const [editingCategory, setEditingCategory] = useState(null)
   const [unreadChannelIds, setUnreadChannelIds] = useState(new Set())
+  const [drop, setDrop] = useState(null) // where the green line is shown
+  const [activeDrag, setActiveDrag] = useState(null) // what is being dragged
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+  // Mouse: drag after moving 5px. Touch: press and hold briefly, so normal scrolling still works.
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 6 } })
+  )
 
   useEffect(() => {
     if (!selectedServer) return
@@ -343,65 +391,139 @@ function ChannelSidebar({ selectedChannel, setSelectedChannel, selectedServer, o
     return groups
   }
 
-  const findContainer = (id, groups) => {
-    if (id === UNCATEGORIZED || categories.some((c) => c.id === id)) return id
-    return Object.keys(groups).find((key) =>
-      groups[key].some((ch) => ch.id === id)
-    )
+  // ---------- drag and drop ----------
+
+  // Categories can only land among categories. Channels can land on other
+  // channels or on a category (its header or its body).
+  const collisionDetection = (args) => {
+    const activeType = args.active.data.current?.type
+    const containers = args.droppableContainers.filter((c) => {
+      const t = c.data.current?.type
+      if (activeType === 'category') return t === 'category'
+      return t === 'channel' || t === 'categoryBody'
+    })
+    return closestCenter({ ...args, droppableContainers: containers })
   }
 
-  // Handles BOTH kinds of drag: reordering categories themselves, and moving/
-  // reordering channels within or across categories — branches based on
-  // which type of item was picked up.
+  // Works out where the dragged item would land, based on how close the TOP
+  // edge of the dragged item is to the gap above or below the item under it.
+  const getDrop = ({ active, over }) => {
+    if (!over) return null
+    const activeData = active.data.current
+    const overData = over.data.current
+    const translated = active.rect.current.translated
+    if (!activeData || !overData || !translated) return null
+
+    if (activeData.type === 'category') {
+      if (overData.type !== 'category' || overData.categoryId === activeData.categoryId) return null
+      const mid = over.rect.top + over.rect.height / 2
+      return { kind: 'category', overId: overData.categoryId, pos: translated.top < mid ? 'before' : 'after' }
+    }
+
+    if (overData.type === 'channel') {
+      if (overData.channelId === activeData.channelId) return null
+      const mid = over.rect.top + over.rect.height / 2
+      return { kind: 'channel', overId: overData.channelId, pos: translated.top < mid ? 'before' : 'after' }
+    }
+
+    if (overData.type === 'categoryBody') {
+      return { kind: 'inside', containerId: overData.categoryId, at: overData.zone === 'header' ? 'top' : 'end' }
+    }
+    return null
+  }
+
+  const handleDragStart = ({ active }) => {
+    const d = active.data.current
+    if (d?.type === 'channel') setActiveDrag({ type: 'channel', item: channels.find((c) => c.id === d.channelId) })
+    else if (d?.type === 'category') setActiveDrag({ type: 'category', item: categories.find((c) => c.id === d.categoryId) })
+  }
+
+  const handleDragMove = (event) => {
+    const next = getDrop(event)
+    setDrop((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next))
+  }
+
+  const handleDragCancel = () => {
+    setDrop(null)
+    setActiveDrag(null)
+  }
+
   const handleDragEnd = async (event) => {
-    const { active, over } = event
-    if (!over) return
+    const dropInfo = getDrop(event)
+    setDrop(null)
+    setActiveDrag(null)
+    if (!dropInfo || !canManageChannels) return
 
-    if (active.data.current?.type === 'category') {
-      if (active.id === over.id) return
-      const oldIndex = categories.findIndex((c) => c.id === active.id)
-      const newIndex = categories.findIndex((c) => c.id === over.id)
-      if (oldIndex === -1 || newIndex === -1) return
+    const activeData = event.active.data.current
 
-      const reordered = arrayMove(categories, oldIndex, newIndex)
-      setCategories(reordered)
+    // ----- reordering a category -----
+    if (activeData.type === 'category') {
+      const moved = categories.find((c) => c.id === activeData.categoryId)
+      const list = categories.filter((c) => c.id !== activeData.categoryId)
+      let idx = list.findIndex((c) => c.id === dropInfo.overId)
+      if (!moved || idx === -1) return
+      if (dropInfo.pos === 'after') idx += 1
+      list.splice(idx, 0, moved)
+      setCategories(list)
       await Promise.all(
-        reordered.map((cat, index) => supabase.from('channel_categories').update({ position: index + 1 }).eq('id', cat.id))
+        list.map((cat, index) => supabase.from('channel_categories').update({ position: index + 1 }).eq('id', cat.id))
       )
       return
     }
 
-    // Otherwise, it's a channel being dragged
+    // ----- moving or reordering a channel -----
+    const activeId = activeData.channelId
     const groups = getGroupedChannels()
-    const normalizeKey = (key) => (key === UNCATEGORIZED ? UNCATEGORIZED : Number(key))
+    const keyOfChannel = (id) => Object.keys(groups).find((k) => groups[k].some((c) => c.id === id))
 
-    const sourceContainer = normalizeKey(findContainer(active.id, groups))
-    const destContainer = normalizeKey(findContainer(over.id, groups))
-    if (sourceContainer === undefined || destContainer === undefined) return
+    const sourceKey = keyOfChannel(activeId)
+    const destKey = dropInfo.kind === 'channel' ? keyOfChannel(dropInfo.overId) : String(dropInfo.containerId)
+    if (sourceKey === undefined || destKey === undefined || !groups[destKey]) return
 
-    const sourceList = [...groups[sourceContainer]]
-    const destList = sourceContainer === destContainer ? sourceList : [...groups[destContainer]]
+    const sourceList = [...groups[sourceKey]]
+    const destList = sourceKey === destKey ? sourceList : [...groups[destKey]]
 
-    const activeIndex = sourceList.findIndex((ch) => ch.id === active.id)
+    const activeIndex = sourceList.findIndex((c) => c.id === activeId)
     if (activeIndex === -1) return
-    const [movedChannel] = sourceList.splice(activeIndex, 1)
+    const [moved] = sourceList.splice(activeIndex, 1)
 
-    let destIndex = destList.findIndex((ch) => ch.id === over.id)
-    if (destIndex === -1) destIndex = destList.length
+    let destIndex = destList.length
+    if (dropInfo.kind === 'channel') {
+      destIndex = destList.findIndex((c) => c.id === dropInfo.overId)
+      if (destIndex === -1) return
+      if (dropInfo.pos === 'after') destIndex += 1
+    } else if (dropInfo.at === 'top') {
+      destIndex = 0
+    }
 
-    destList.splice(destIndex, 0, movedChannel)
+    const newCategoryId = destKey === UNCATEGORIZED ? null : Number(destKey)
+    destList.splice(destIndex, 0, { ...moved, category_id: newCategoryId })
 
-    const newCategoryId = destContainer === UNCATEGORIZED ? null : destContainer
-    setChannels((current) =>
-      current.map((ch) => (ch.id === movedChannel.id ? { ...ch, category_id: newCategoryId } : ch))
-    )
+    // Nothing actually changed? Then do nothing.
+    const sameSpot =
+      sourceKey === destKey &&
+      destList.map((c) => c.id).join() === groups[sourceKey].map((c) => c.id).join()
+    if (sameSpot) return
 
-    await supabase.from('channels').update({ category_id: newCategoryId }).eq('id', movedChannel.id)
+    // Update the screen right away
+    const newGroups = { ...groups, [sourceKey]: sourceList, [destKey]: destList }
+    const order = [...new Set([UNCATEGORIZED, ...categories.map((c) => String(c.id)), ...Object.keys(newGroups)])]
+    const nextChannels = []
+    order.forEach((k) => {
+      ;(newGroups[k] || []).forEach((c, i) => nextChannels.push({ ...c, position: i + 1 }))
+    })
+    setChannels(nextChannels)
 
-    const listsToPersist = sourceContainer === destContainer ? [destList] : [sourceList, destList]
+    // Save to the database
+    const listsToPersist = sourceKey === destKey ? [destList] : [sourceList, destList]
     for (const list of listsToPersist) {
       await Promise.all(
-        list.map((ch, index) => supabase.from('channels').update({ position: index + 1 }).eq('id', ch.id))
+        list.map((c, index) =>
+          supabase
+            .from('channels')
+            .update(c.id === moved.id ? { position: index + 1, category_id: newCategoryId } : { position: index + 1 })
+            .eq('id', c.id)
+        )
       )
     }
   }
@@ -416,43 +538,68 @@ function ChannelSidebar({ selectedChannel, setSelectedChannel, selectedServer, o
       </div>
 
       <div className="flex-1 overflow-y-auto p-2">
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={grouped[UNCATEGORIZED].map((c) => c.id)} strategy={verticalListSortingStrategy}>
-            <UncategorizedDroppable>
-              {grouped[UNCATEGORIZED].map((ch) => (
-                <ChannelItem
-                  key={ch.id}
-                  ch={ch}
-                  isSelected={selectedChannel?.id === ch.id}
-                  onSelect={() => { setSelectedChannel(ch); markChannelRead(ch.id) }}
-                  onOpenSettings={setEditingChannel}
-                  canManageChannels={canManageChannels}
-                  isUnread={unreadChannelIds.has(ch.id)}
-                />
-              ))}
-            </UncategorizedDroppable>
-          </SortableContext>
+        <DropContext.Provider value={drop}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={collisionDetection}
+            onDragStart={handleDragStart}
+            onDragMove={handleDragMove}
+            onDragEnd={handleDragEnd}
+            onDragCancel={handleDragCancel}
+          >
+            <SortableContext items={grouped[UNCATEGORIZED].map((c) => `ch-${c.id}`)} strategy={verticalListSortingStrategy}>
+              <UncategorizedDroppable>
+                {grouped[UNCATEGORIZED].map((ch) => (
+                  <ChannelItem
+                    key={ch.id}
+                    ch={ch}
+                    isSelected={selectedChannel?.id === ch.id}
+                    onSelect={() => { setSelectedChannel(ch); markChannelRead(ch.id) }}
+                    onOpenSettings={setEditingChannel}
+                    canManageChannels={canManageChannels}
+                    isUnread={unreadChannelIds.has(ch.id)}
+                  />
+                ))}
+              </UncategorizedDroppable>
+            </SortableContext>
 
-          <SortableContext items={categories.map((c) => c.id)} strategy={verticalListSortingStrategy}>
-            {categories
-              .filter((cat) => canManageChannels || (grouped[cat.id] || []).length > 0)
-              .map((cat) => (
-              <CategorySection
-                key={cat.id}
-                category={cat}
-                channels={grouped[cat.id] || []}
-                selectedChannel={selectedChannel}
-                onSelectChannel={(ch) => { setSelectedChannel(ch); markChannelRead(ch.id) }}
-                onOpenChannelSettings={setEditingChannel}
-                onOpenCategorySettings={setEditingCategory}
-                canManageChannels={canManageChannels}
-                unreadChannelIds={unreadChannelIds}
-                collapsed={collapsedCategories.has(cat.id)}
-                onToggleCollapse={handleToggleCollapse}
-              />
-            ))}
-          </SortableContext>
-        </DndContext>
+            <SortableContext items={categories.map((c) => `cat-${c.id}`)} strategy={verticalListSortingStrategy}>
+              {categories
+                .filter((cat) => canManageChannels || (grouped[cat.id] || []).length > 0)
+                .map((cat) => (
+                  <CategorySection
+                    key={cat.id}
+                    category={cat}
+                    channels={grouped[cat.id] || []}
+                    selectedChannel={selectedChannel}
+                    onSelectChannel={(ch) => { setSelectedChannel(ch); markChannelRead(ch.id) }}
+                    onOpenChannelSettings={setEditingChannel}
+                    onOpenCategorySettings={setEditingCategory}
+                    canManageChannels={canManageChannels}
+                    unreadChannelIds={unreadChannelIds}
+                    collapsed={collapsedCategories.has(cat.id)}
+                    onToggleCollapse={handleToggleCollapse}
+                  />
+                ))}
+            </SortableContext>
+
+            {createPortal(
+              <DragOverlay dropAnimation={null}>
+                {activeDrag?.type === 'channel' && activeDrag.item && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded bg-gray-700 text-white text-sm shadow-lg w-52 opacity-95">
+                    <ChannelIcon locked={activeDrag.item.isPrivate} className="opacity-80" /> {activeDrag.item.name}
+                  </div>
+                )}
+                {activeDrag?.type === 'category' && activeDrag.item && (
+                  <div className="px-3 py-1.5 rounded bg-gray-700 text-xs font-semibold text-gray-200 uppercase shadow-lg w-52 opacity-95">
+                    ▾ {activeDrag.item.name}
+                  </div>
+                )}
+              </DragOverlay>,
+              document.body
+            )}
+          </DndContext>
+        </DropContext.Provider>
       </div>
 
       {editingChannel && (
@@ -480,11 +627,6 @@ function ChannelSidebar({ selectedChannel, setSelectedChannel, selectedServer, o
       )}
     </div>
   )
-}
-
-function UncategorizedDroppable({ children }) {
-  const { setNodeRef } = useDroppable({ id: UNCATEGORIZED, data: { type: 'category' } })
-  return <div ref={setNodeRef} className="min-h-[4px] mb-2">{children}</div>
 }
 
 export default ChannelSidebar
